@@ -45,9 +45,9 @@ struct BackpackCard: View {
             Image(systemName: backpack.isOn ? "backpack.fill" : "backpack")
                 .font(.system(size: 30, weight: .medium))
                 .foregroundStyle(HP.ok)
-                .symbolEffect(.pulse, isActive: backpack.isOn)
         }
         .frame(width: layout.isPopover ? 56 : 72, height: layout.isPopover ? 56 : 72)
+        .accessibilityHidden(true)
     }
 
     private var titleBlock: some View {
@@ -97,13 +97,13 @@ struct BackpackCard: View {
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(HP.text3)
                 .frame(width: 16)
-            Text(text).font(.system(size: 12)).foregroundStyle(HP.text2).lineLimit(1)
+            Text(text).font(.system(size: 12)).foregroundStyle(HP.text2).fixedSize(horizontal: false, vertical: true)
         }
     }
 
     @ViewBuilder
     private var actions: some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             switch backpack.phase {
             case .on(let since):
                 Button("End Backpack mode") { backpack.stop() }

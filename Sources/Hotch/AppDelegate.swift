@@ -18,20 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var swipeMonitor: PageSwipeMonitor!
     private var statusItemController: StatusItemController!
     private var settingsWindowController: SettingsWindowController!
+    private var onboardingWindowController: OnboardingWindowController!
     private var storeObservation: Timer?
     private var cancellables: Set<AnyCancellable> = []
-
-    /// How long after launch the one-time reveal unfolds the panel.
-    ///
-    /// A second, not immediately. The status item is still being placed and the
-    /// first refresh is still in flight, and a panel dropping out of the bezel
-    /// before the desktop has settled reads as a glitch rather than as the app
-    /// introducing itself.
-    private static let revealDelay: TimeInterval = 1.0
-    /// How long it then stays open with nobody hovering it. Long enough to
-    /// notice something appeared, read six words and look at where they came
-    /// from; short enough that ignoring it costs nothing.
-    private static let revealHold: TimeInterval = 6.0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -69,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionStore.scanIfStale(0)
         clipboardStore = ClipboardStore()
         clipboardStore.enabled = settings.clipboardHistoryEnabled
-        clipboardStore.start()
+        if settings.clipboardHistoryEnabled { clipboardStore.start() }
         focusStore = FocusStore()
         model = PanelModel()
         system = SystemMonitor.shared
@@ -90,6 +79,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // its hidden windows still re-rendered on every system tick.
         settingsWindowController = SettingsWindowController(settings: settings,
                                                             store: store)
+        onboardingWindowController = OnboardingWindowController(settings: settings)
+        settingsWindowController.onShowWelcome = { [weak self] in
+            self?.onboardingWindowController.show()
+        }
+        settingsWindowController.onPreviewAlert = { [weak self] in self?.previewAlert() }
+        onboardingWindowController.onPreviewAlert = { [weak self] in self?.previewAlert() }
+        onboardingWindowController.onOpenSettings = { [weak self] in self?.settingsWindowController.show() }
+        onboardingWindowController.onFinish = { [weak self] in
+            guard let self else { return }
+            // Only an explicit finish reveals the companion, keeping launch quiet.
+            if !self.anchors.card.isShown && self.statusItemController.popoverWindow == nil {
+                self.anchors.toggle()
+            }
+        }
 
         statusItemController = StatusItemController(store: store,
                                                     sessionStore: sessionStore,
@@ -209,6 +212,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // HMotion reads the current OS values. Invalidate the models our
+        // SwiftUI roots already observe so open surfaces also re-read those
+        // values immediately, without waiting for the next telemetry update.
+        NSWorkspace.shared.notificationCenter.publisher(
+            for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.settings.objectWillChange.send()
+                HotchPrefs.shared.objectWillChange.send()
+                self.store.objectWillChange.send()
+                self.sessionStore.objectWillChange.send()
+                self.clipboardStore.objectWillChange.send()
+                self.focusStore.objectWillChange.send()
+                self.system.objectWillChange.send()
+                self.anchors.refreshPlacement()
+            }
+            .store(in: &cancellables)
+
         // Cheap poll to keep the menu bar title in step with the store, and the
         // session list fresh enough for the needs-input dot. The scan cadence
         // follows attention: seconds while a surface is showing the list,
@@ -243,7 +265,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] enabled in
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        self?.clipboardStore.enabled = enabled
+                        guard let clipboard = self?.clipboardStore else { return }
+                        clipboard.enabled = enabled
+                        if enabled { clipboard.start() } else { clipboard.stop() }
                     }
                 }
             }
@@ -272,57 +296,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.requestRefresh()
 
-        // First launch of a fresh install with nothing set up: show Settings
-        // unprompted. There is no window and no Dock icon, so otherwise the panel
-        // would open empty with no discoverable way to fix that. Opening it once is
-        // the whole onboarding.
-        //
-        // Skipped when the seed above found a working provider: there are real
-        // numbers in the panel already, and a window opening by itself would just
-        // be something to dismiss.
-        if firstLaunch && settings.enabledProviderIDs.isEmpty {
-            hotchLog.log("first launch with nothing set up, opening settings")
-            settingsWindowController.show()
-        }
-
-        // A full menu bar leaves the status item with no room at all, and an app
-        // with no Dock icon and no visible status item has, from the outside,
-        // not launched — the reports are people reinstalling something that was
-        // already running. So the first launch introduces itself: the panel
-        // unfolds once, unasked, with a line saying where to find it again.
-        // Every launch after this one is silent.
-        //
-        // Keyed off the `firstLaunch` computed at the top rather than asking
-        // again. `claimFirstLaunch` writes the flag as it answers, so a second
-        // call returns false and this would never fire for anyone.
-        //
-        // Unconditional where the Settings window above is not: the reveal is
-        // about the app being findable, which is exactly as true for someone
-        // whose providers were seeded successfully.
-        if firstLaunch {
-            DispatchQueue.main.asyncAfter(deadline: .now() + AppDelegate.revealDelay) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    hotchLog.log("first launch, revealing the panel")
-                    // The monitor owns the collapse, so it is what has to be
-                    // told to hold on: left to itself, its next poll finds the
-                    // pointer nowhere near the notch and takes the panel away
-                    // 160ms after it arrived.
-                    // Say where Hotch lives by opening the card from it once.
-                    self.anchors.toggle()
-                }
-            }
+        // Completed upgrades stay quiet. A fresh install, or an introduction
+        // closed before finishing, gets the native welcome instead of Settings
+        // and a competing automatic panel reveal.
+        if settings.shouldShowWelcome {
+            onboardingWindowController.show()
         }
 
         // Last, and only in the case that is actually broken: running from the
         // disk image instead of Applications. Deferred by one turn of the run
         // loop so the menu bar icon is already there to point at, and placed
-        // after Settings so the two never fight over the front window.
+        // after welcome so the two never fight over the front window.
         if !InstallLocation.isProperlyInstalled {
             hotchLog.log("not installed: running from \(InstallLocation.bundlePath, privacy: .public)")
             DispatchQueue.main.async {
                 InstallLocation.warnIfNotInstalled()
             }
+        }
+    }
+
+    private func previewAlert() {
+        let sample = LiveActivity(icon: .symbol("checkmark.circle.fill"),
+                                  leading: "All done", trailing: "Your companion will let you know",
+                                  tint: HP.ok, trailingTint: HP.ok, dot: true,
+                                  key: "welcome-sample")
+        // Alerts speak through the resting anchor. A pinned card may still be
+        // open behind Settings, so close it before demonstrating the alert.
+        anchors.dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + AnchorMotion.settle) { [weak self] in
+            self?.anchors.present(sample) {}
         }
     }
 

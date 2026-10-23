@@ -61,6 +61,9 @@ final class ClipboardStore: ObservableObject {
 
     func start() {
         stop()
+        // Opting in starts with future copies, never text copied while off.
+        lastChangeCount = NSPasteboard.general.changeCount
+        guard enabled else { return }
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.tick()

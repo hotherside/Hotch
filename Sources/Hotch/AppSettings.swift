@@ -56,13 +56,13 @@ final class AppSettings: ObservableObject {
         /// the user chose. Never carried across from an old bundle identifier: a
         /// stale copy would claim a migration this domain never performed.
         static let bookkeeping: Set<String> = [
-            migratedFromLegacy, hasLaunchedBefore, prunedInheritedDefaults,
+            migratedFromLegacy, hasLaunchedBefore, prunedInheritedDefaults, OnboardingPolicy.completedKey,
             // The name this key had before there were two old domains to come from.
             "migratedFromNotchPeekBundleID",
         ]
     }
 
-    /// False exactly once, on the very first launch of a fresh install.
+    /// True exactly once, on the very first launch of a fresh install.
     ///
     /// An accessory app has no window and no Dock icon, so there is nothing on
     /// screen to tell a new user that Settings exists, let alone that a provider
@@ -72,7 +72,7 @@ final class AppSettings: ObservableObject {
     func claimFirstLaunch() -> Bool {
         guard !defaults.bool(forKey: Key.hasLaunchedBefore) else { return false }
         defaults.set(true, forKey: Key.hasLaunchedBefore)
-        return true
+        return isFreshInstall
     }
 
     /// The set that was on by default back when preferences stored a *disabled*
@@ -149,6 +149,19 @@ final class AppSettings: ObservableObject {
 
     static let defaultRefreshInterval: TimeInterval = 60
 
+    /// Fixed before initialization writes defaults, so a new install remains
+    /// distinguishable from an upgrade throughout this launch.
+    let isFreshInstall: Bool
+
+    @Published private(set) var welcomeCompleted: Bool
+
+    var shouldShowWelcome: Bool { !welcomeCompleted }
+
+    func completeWelcome() {
+        welcomeCompleted = true
+        defaults.set(true, forKey: OnboardingPolicy.completedKey)
+    }
+
     private let defaults: UserDefaults
 
     /// Bundle identifiers this app wrote preferences under before, **newest
@@ -192,8 +205,22 @@ final class AppSettings: ObservableObject {
     }
 
     init(defaults: UserDefaults = .standard) {
+        let currentExists = OnboardingPolicy.hasExistingPreferences(defaults.dictionaryRepresentation())
+        let legacyExists = AppSettings.legacyDefaultsDomains.contains { domain in
+            guard let values = UserDefaults(suiteName: domain)?.persistentDomain(forName: domain) else {
+                return false
+            }
+            return OnboardingPolicy.hasExistingPreferences(values)
+        }
+        let existingInstall = currentExists || legacyExists
+        self.isFreshInstall = !existingInstall
         AppSettings.migrateLegacyDefaults(into: defaults)
         self.defaults = defaults
+        let resolvedWelcome = OnboardingPolicy.welcomeCompleted(
+            stored: defaults.object(forKey: OnboardingPolicy.completedKey) as? Bool,
+            existingInstall: existingInstall)
+        self.welcomeCompleted = resolvedWelcome
+        defaults.set(resolvedWelcome, forKey: OnboardingPolicy.completedKey)
 
         if let stored = defaults.stringArray(forKey: Key.enabledProviders) {
             // Providers that no longer exist are dropped from the stored set,
@@ -226,9 +253,15 @@ final class AppSettings: ObservableObject {
 
         self.grokTeamID = defaults.string(forKey: GrokProvider.teamIDDefaultsKey) ?? ""
 
-        // Defaults on; `bool(forKey:)` defaults to false, so absence has to be
-        // told apart from a stored false.
-        self.clipboardHistoryEnabled = defaults.object(forKey: Key.clipboardHistory) as? Bool ?? true
+        // A new install requires opt-in. Preserve the historical default for
+        // upgrades, including old domains whose clipboard key was never written.
+        let resolvedClipboard = OnboardingPolicy.clipboardEnabled(
+            stored: defaults.object(forKey: Key.clipboardHistory) as? Bool,
+            existingInstall: existingInstall)
+        self.clipboardHistoryEnabled = resolvedClipboard
+        // Persist the resolved choice now: initialization writes other defaults,
+        // so a relaunch during welcome must not be mistaken for an upgrade.
+        defaults.set(resolvedClipboard, forKey: Key.clipboardHistory)
 
         self.displayMode = AppSettings.displayModeOverride
             ?? defaults.string(forKey: Key.displayMode).flatMap(UsageDisplayMode.init(rawValue:))

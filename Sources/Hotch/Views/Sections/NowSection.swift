@@ -74,9 +74,9 @@ struct Rise: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(active ? 1 : 0)
-            .offset(y: active ? 0 : -6)
-            .animation(active ? .spring(duration: 0.34, bounce: 0.08).delay(0.05 + Double(index) * 0.035)
-                              : .easeOut(duration: 0.14),
+            .offset(y: active || HMotion.reduceMotion ? 0 : -6)
+            .animation(HMotion.reduceMotion ? nil : (active ? .spring(duration: 0.34, bounce: 0.08).delay(0.05 + Double(index) * 0.035)
+                              : .easeOut(duration: 0.14)),
                        value: active)
     }
 }
@@ -450,5 +450,8 @@ struct MemoryBar: View {
             .init(fraction: Double(memory.compressedBytes) / total, color: HP.memory.opacity(0.38)),
             .init(fraction: Double(memory.cachedBytes) / total, color: HP.memory.opacity(0.18)),
         ], height: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Memory composition")
+        .accessibilityValue("\(SysFmt.bytes(memory.usedBytes)) used of \(SysFmt.bytes(memory.totalBytes)); app \(SysFmt.bytes(memory.appBytes)), wired \(SysFmt.bytes(memory.wiredBytes)), compressed \(SysFmt.bytes(memory.compressedBytes)), cached \(SysFmt.bytes(memory.cachedBytes))")
     }
 }

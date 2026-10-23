@@ -1,42 +1,65 @@
 import AppKit
 import Darwin
 
-/// Brings forward the app a session runs in: the terminal, editor or
-/// desktop app that started it.
-///
-/// Claude Code records each session's process, and walking up its parents
-/// reaches the app (Terminal, VS Code, the Claude app). A Codex thread has
-/// no process to follow, so its app is found by where it was started. This
-/// is app level only: picking the exact window or tab would need the
-/// Accessibility permission, which Hotch does not ask for.
+/// Opens the host application. Selecting the session's exact tab or window
+/// would require an integration the host apps do not currently expose here.
 @MainActor
 enum SessionJump {
-    @discardableResult
-    static func go(to session: AgentSession) -> Bool {
-        if let pid = session.pid, let app = owningApp(of: pid_t(pid)) {
-            return bringForward(app)
-        }
-        for id in bundleIDs(for: session) {
-            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
-                return bringForward(app)
+    /// Completion runs on the main actor after macOS confirms an app opened.
+    /// Failures keep the card available and explain how to reach the session.
+    static func go(to session: AgentSession, completion: @escaping @MainActor (Bool) -> Void) {
+        let runningApps = NSWorkspace.shared.runningApplications
+        let hosts = runningApps.compactMap(host)
+        let ancestors = session.pid.map { ancestry(of: pid_t($0)) } ?? []
+        switch SessionHandoffPolicy.resolve(surface: session.surface, ancestry: ancestors, running: hosts) {
+        case .failure(let failure):
+            completion(false)
+            showFailure(failure)
+        case .success(let target):
+            guard let app = runningApps.first(where: { $0.processIdentifier == target.processID }),
+                  !app.isTerminated, let url = app.bundleURL else {
+                completion(false)
+                showFailure(.hostNotRunning(target.name))
+                return
+            }
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { opened, error in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        let accepted = SessionHandoffPolicy.launchWasAccepted(
+                            hasApplication: opened != nil,
+                            hasError: error != nil,
+                            isTerminated: opened?.isTerminated ?? true)
+                        completion(accepted)
+                        if !accepted { showFailure(.launchRejected(target.name)) }
+                    }
+                }
             }
         }
-        return false
     }
 
-    /// The nearest ancestor that is an ordinary app with a Dock icon. A
-    /// session under tmux has none (tmux's server belongs to launchd).
-    private static func owningApp(of pid: pid_t) -> NSRunningApplication? {
+    private static func host(_ app: NSRunningApplication) -> SessionHost? {
+        guard app.activationPolicy == .regular, !app.isTerminated,
+              let bundleID = app.bundleIdentifier else { return nil }
+        return SessionHost(processID: app.processIdentifier, bundleID: bundleID,
+                           name: app.localizedName ?? bundleID)
+    }
+
+    /// tmux may have no app ancestor because its server belongs to launchd.
+    /// That is an unknown host, rather than evidence for any open terminal.
+    private static func ancestry(of pid: pid_t) -> [SessionHost] {
+        var result: [SessionHost] = []
         var current = pid
-        for _ in 0..<16 {
-            if let app = NSRunningApplication(processIdentifier: current), app.activationPolicy == .regular {
-                return app
+        for _ in 0..<32 {
+            if let app = NSRunningApplication(processIdentifier: current), let item = host(app) {
+                result.append(item)
             }
             let parent = parentPID(of: current)
-            guard parent > 1, parent != current else { return nil }
+            guard parent > 1, parent != current else { break }
             current = parent
         }
-        return nil
+        return result
     }
 
     private static func parentPID(of pid: pid_t) -> pid_t {
@@ -46,23 +69,13 @@ enum SessionJump {
         return pid_t(info.pbi_ppid)
     }
 
-    private static func bundleIDs(for session: AgentSession) -> [String] {
-        switch session.surface {
-        case "Claude desktop", "Cowork": return ["com.anthropic.claudefordesktop"]
-        case "Codex app": return ["com.openai.codex", "com.openai.chat"]
-        case "VS Code": return ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92"]
-        case "Terminal": return ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable"]
-        default: return []
-        }
-    }
-
-    /// Through Launch Services, like a Dock click: a background app such as
-    /// Hotch is not allowed to activate another app directly.
-    private static func bringForward(_ app: NSRunningApplication) -> Bool {
-        guard let url = app.bundleURL else { return app.activate() }
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config)
-        return true
+    private static func showFailure(_ failure: SessionHandoffFailure) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Couldn’t open this session’s app"
+        alert.informativeText = failure.recoveryMessage
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 }

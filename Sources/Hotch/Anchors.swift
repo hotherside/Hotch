@@ -28,16 +28,16 @@ struct CardDeps {
 
 /// The anchors share one motion family with the card.
 enum AnchorMotion {
-    static let morph: Animation = .spring(duration: 0.32, bounce: 0.12)
-    static let settle: TimeInterval = 0.34
-    static let dwell: TimeInterval = 0.12
+    static var morph: Animation { HMotion.reduceMotion ? .linear(duration: 0.01) : .spring(duration: 0.32, bounce: 0.12) }
+    static var settle: TimeInterval { HMotion.reduceMotion ? 0.01 : 0.34 }
+    static let dwell: TimeInterval = 0.22
     /// Resting on the tab's face, rather than pushing against the screen
     /// edge, waits a little longer: the tab now covers a scroll bar's width.
-    static let tabDwell: TimeInterval = 0.3
-    static let leave: TimeInterval = 0.22
+    static let tabDwell: TimeInterval = 0.24
+    static let leave: TimeInterval = 0.3
     /// Resting on a section icon this long opens it; crossing it does not.
-    static let hoverIntent: TimeInterval = 0.1
-    static let glide: TimeInterval = 0.28
+    static let hoverIntent: TimeInterval = 0.23
+    static var glide: TimeInterval { HMotion.reduceMotion ? 0.01 : 0.28 }
     static let poll: TimeInterval = 0.025
 }
 
@@ -96,9 +96,9 @@ struct CardRoot: View {
             Color.clear.preference(key: CardSizeKey.self, value: geo.size)
         })
         .onPreferenceChange(CardSizeKey.self) { onSize($0) }
-        .scaleEffect(presence.visible ? 1 : 0.96, anchor: presence.origin)
+        .scaleEffect(presence.visible || HMotion.reduceMotion ? 1 : 0.96, anchor: presence.origin)
         .opacity(presence.visible ? 1 : 0)
-        .blur(radius: presence.visible ? 0 : 4)
+        .blur(radius: presence.visible || HMotion.reduceMotion ? 0 : 4)
         .animation(presence.visible ? AnchorMotion.morph : .easeIn(duration: 0.15), value: presence.visible)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: presence.alignment)
     }
@@ -125,8 +125,8 @@ struct GlassShape<S: Shape>: View {
     var body: some View {
         // ImageRenderer cannot rasterise a material, so renders get a flat
         // stand-in of the same tone.
-        shape.fill(snapshot ? AnyShapeStyle(Dynamic.color(dark: .init(white: 0.13, alpha: 0.96),
-                                                          light: .init(white: 0.96, alpha: 0.97)))
+        shape.fill(snapshot || HMotion.reduceTransparency ? AnyShapeStyle(Dynamic.color(dark: .init(white: 0.13, alpha: HMotion.reduceTransparency ? 1 : 0.96),
+                                                          light: .init(white: 0.96, alpha: HMotion.reduceTransparency ? 1 : 0.97)))
                             : AnyShapeStyle(.regularMaterial))
             .overlay(shape.fill(Dynamic.color(dark: .init(white: 0.08, alpha: 0.45), light: .init(white: 1, alpha: 0.35))))
             .overlay(shape.stroke(Dynamic.color(dark: .init(white: 1, alpha: 0.14), light: .init(white: 0, alpha: 0.12)), lineWidth: 0.75))
@@ -149,7 +149,13 @@ final class CardPanelController {
     private var shadow: ShadowFollower!
     private var cancellables: Set<AnyCancellable> = []
     /// Opened by the keyboard shortcut or a click: stays until dismissed.
-    var pinned = false { didSet { syncKeyable() } }
+    var pinned = false {
+        didSet {
+            syncKeyable()
+            // Clicking a peek that is already open must also receive Esc.
+            if pinned && !oldValue && presence.visible { panel.makeKey() }
+        }
+    }
 
     var isShown: Bool { presence.visible }
     var frame: CGRect { panel.frame }
@@ -317,11 +323,9 @@ final class ShadowFollower {
     }
 }
 
-/// A tab on the screen edge carrying three readouts you can read at a glance:
-/// the tightest AI window, the active sessions and the CPU. Hover it and it
-/// becomes a column of section icons with the card beside it; resting on an
-/// icon switches section. Drag it anywhere and it lands on the nearer edge,
-/// left or right, at the height it was dropped.
+/// Six permanent section targets on the screen edge. AI, Sessions and Mac
+/// carry compact live readouts; hovering opens the card beside the same
+/// targets. Drag it to another display or to the left, right or bottom edge.
 ///
 /// **The window never moves while the rail changes shape.** It is as tall as
 /// every shape at this position and its top and screen-edge side stay put;
@@ -333,8 +337,8 @@ final class ShadowFollower {
 @MainActor
 final class RailController {
     /// The shapes as drawn: the resting tab, the open column, an alert.
-    static let tabSize = CGSize(width: 42, height: 206)
-    static let columnSize = CGSize(width: 42, height: 258)
+    static let tabSize = CGSize(width: RailGeometry.width, height: RailGeometry.height)
+    static let columnSize = tabSize
     static var alertSize: CGSize { CGSize(width: tabSize.width + RailView.bubbleWidth, height: tabSize.height) }
     /// Lying along the bottom it is a second, smaller Dock in the space beside
     /// the real one: the same height and the same gap under it, worked out
@@ -346,9 +350,9 @@ final class RailController {
         guard strip >= 30 else { return (44, 5) }
         return (max(34, strip - 7), 5)
     }
-    /// Resting: three readouts. Open: six section icons, a little wider.
-    static var barSize: CGSize { CGSize(width: 156, height: dock.height) }
-    static var barOpenSize: CGSize { CGSize(width: 200, height: dock.height) }
+    /// Bottom targets keep their positions while the card opens.
+    static var barSize: CGSize { CGSize(width: RailGeometry.bottomWidth, height: dock.height) }
+    static var barOpenSize: CGSize { barSize }
 
     static func size(for phase: RailState.Phase, side: HotchPrefs.EdgeSide) -> CGSize {
         if side == .bottom { return phase == .expanded ? barOpenSize : barSize }
@@ -429,7 +433,7 @@ final class RailController {
         panel.ignoresMouseEvents = hidden
         guard (panel.alphaValue < 0.5) != hidden else { return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = hidden ? 0.2 : 0.14
+            context.duration = HMotion.reduceMotion ? 0.01 : (hidden ? 0.2 : 0.14)
             panel.animator().alphaValue = hidden ? 0 : 1
         }
     }
@@ -505,6 +509,9 @@ final class RailController {
     func stop() {
         timer?.invalidate()
         timer = nil
+        hoverWork?.cancel()
+        settleWork?.cancel()
+        state.hovered = nil
         removeClickMonitor()
         card.hide()
         label.hide()
@@ -533,6 +540,7 @@ final class RailController {
         settleWork?.cancel()
         state.inset = inset(for: state.phase)
         panel.setFrame(panelFrame(for: state.phase), display: true)
+        card.reposition()
         shadow.follow(for: 0.05)
     }
 
@@ -580,46 +588,20 @@ final class RailController {
         insideSince = nil
         outsideSince = nil
         set(.expanded)
-        let column = openFrame
         let side = state.side
         card.pinned = pinned
-        if side == .bottom {
-            // Up from the bar, centred on it, kept on screen.
-            card.show(origin: .bottom, alignment: .bottom, showsTabs: false) { [weak self] size in
-                guard let visible = self?.screen?.visibleFrame else { return CGRect(origin: .zero, size: size) }
-                let x = min(max(column.midX - size.width / 2, visible.minX + 6), visible.maxX - size.width - 6)
-                let y = min(column.maxY + 8, visible.maxY - size.height - 6)
-                return CGRect(x: x, y: y, width: size.width, height: size.height)
-            }
-            if pinned { installClickMonitor() }
-            Haptics.tap()
-            return
-        }
-        // Centred on the rail, so it grows and shrinks evenly up and down as
-        // sections change. Only where the screen's edge would cut it off is
-        // it held against that edge instead, and then that edge stays put.
-        let visibleFrame = screen?.visibleFrame ?? .zero
-        let tallest = card.contentSize.height
-        let vertical: VerticalAlignment
-        if column.midY + tallest / 2 > visibleFrame.maxY - 6 {
-            vertical = .top
-        } else if column.midY - tallest / 2 < visibleFrame.minY + 6 {
-            vertical = .bottom
-        } else {
-            vertical = .center
-        }
-        card.show(origin: side == .right ? .trailing : .leading,
-                  alignment: Alignment(horizontal: side == .right ? .trailing : .leading, vertical: vertical),
+        let edge: RailGeometry.Side = side == .bottom ? .bottom : (side == .right ? .right : .left)
+        // Reserve the cap plus header, footer and padding. Every page grows
+        // away from one attachment, recalculated only if the rail moves.
+        card.show(origin: side == .bottom ? .bottom : (side == .right ? .topTrailing : .topLeading),
+                  alignment: side == .bottom ? .bottom : (side == .right ? .topTrailing : .topLeading),
                   showsTabs: false) { [weak self] size in
-            guard let visible = self?.screen?.visibleFrame else { return CGRect(origin: .zero, size: size) }
-            let x = side == .right ? column.minX - 8 - size.width : column.maxX + 8
-            let y: CGFloat
-            switch vertical {
-            case .top: y = visible.maxY - 6 - size.height
-            case .bottom: y = visible.minY + 6
-            default: y = min(max(column.midY - size.height / 2, visible.minY + 6), visible.maxY - size.height - 6)
-            }
-            return CGRect(x: x, y: y, width: size.width, height: size.height)
+            guard let self, let visible = self.screen?.visibleFrame else { return CGRect(origin: .zero, size: size) }
+            let column = self.openFrame
+            let attachment = RailGeometry.cardAttachment(rail: column, visible: visible, side: edge,
+                                                         maximumHeight: CardMetrics.maxSectionHeight + 76)
+            return RailGeometry.cardFrame(size: size, rail: column, visible: visible,
+                                          side: edge, attachment: attachment)
         }
         if pinned { installClickMonitor() }
         Haptics.tap()
@@ -640,36 +622,31 @@ final class RailController {
 
     private func select(_ page: PanelPage) {
         hoverWork?.cancel()
-        guard card.deps.pages.page != page || card.deps.pages.macDetail != nil || card.deps.pages.backpackCard else { return }
-        card.deps.pages.select(page)
-        Haptics.tap()
+        let wasCollapsed = state.phase != .expanded
+        if wasCollapsed {
+            openSection(page, contextual: true)
+            expand(pinned: true)
+        } else {
+            card.pinned = true
+            installClickMonitor()
+            guard card.deps.pages.page != page || card.deps.pages.macDetail != nil || card.deps.pages.backpackCard else { return }
+            card.deps.pages.select(page)
+            Haptics.tap()
+        }
     }
 
-    /// Opening from a readout lands on its section: memory on Mac › Memory,
-    /// the AI ring on AI, the sessions ring on Sessions.
+    private func openSection(_ page: PanelPage, contextual: Bool) {
+        card.deps.pages.select(page)
+        if contextual, page == .mac { card.deps.pages.macDetail = .memory }
+    }
+
+    /// The compact readouts occupy their section's permanent slot. Opening
+    /// from Memory still goes straight to Mac › Memory.
     private func openOnReadout(at point: CGPoint) {
         let tab = restingFrame
-        let index: Int
-        if state.side == .bottom {
-            let x = point.x - tab.minX
-            index = (0..<3).min { abs(RailView.barCenter($0) - x) < abs(RailView.barCenter($1) - x) } ?? 0
-        } else {
-            let y = tab.maxY - point.y
-            index = (0..<3).min { abs(RailView.ringCenter($0) - y) < abs(RailView.ringCenter($1) - y) } ?? 0
-        }
-        let pages = card.deps.pages
-        pages.backpackCard = false
-        switch index {
-        case 0:
-            pages.page = .mac
-            pages.macDetail = .memory
-        case 1:
-            pages.page = .ai
-            pages.macDetail = nil
-        default:
-            pages.page = .agents
-            pages.macDetail = nil
-        }
+        let position = state.side == .bottom ? point.x - tab.minX : tab.maxY - point.y
+        let index = RailGeometry.nearestSlot(to: position, bottom: state.side == .bottom)
+        openSection(PanelPage.allCases[index], contextual: true)
     }
 
     /// Hovering an icon lights it at once and opens its section only once
@@ -679,11 +656,14 @@ final class RailController {
         if inside {
             withAnimation(.easeOut(duration: 0.12)) { state.hovered = page }
             hoverWork?.cancel()
+            guard state.phase == .expanded else { return }
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, self.state.hovered == page, self.state.phase == .expanded,
                           self.dragStart == nil else { return }
-                    self.select(page)
+                    guard self.card.deps.pages.page != page else { return }
+                    self.card.deps.pages.select(page)
+                    Haptics.tap()
                 }
             }
             hoverWork = work
@@ -738,8 +718,9 @@ final class RailController {
                 insideSince = nil
             }
         case .expanded:
-            let inside = openFrame.insetBy(dx: -4, dy: -4).contains(point)
-                || (card.isShown && card.frame.insetBy(dx: -8, dy: -8).contains(point))
+            let inside = openFrame.insetBy(dx: -8, dy: -10).contains(point)
+                || (card.isShown && (card.frame.insetBy(dx: -10, dy: -10).contains(point)
+                    || RailGeometry.hoverBridgeContains(point, rail: openFrame, card: card.frame)))
             if inside || card.pinned || card.isEditing {
                 outsideSince = nil
             } else if let since = outsideSince {
@@ -919,48 +900,32 @@ struct RailView: View {
 
     // MARK: Metrics
 
-    /// How far the top and bottom take to thin out into the screen edge.
-    static let taper: CGFloat = 28
-    static let ring: CGFloat = 26
-    static let ringLine: CGFloat = 2.6
-    static let valueHeight: CGFloat = 14
-    static let ringToValue: CGFloat = 3
+    /// A long, tangent curve lets the rail flow out of the display edge.
+    static let taper = RailGeometry.taper
+    static let ring: CGFloat = 19
+    static let ringLine: CGFloat = 1.8
+    static let valueHeight: CGFloat = 10
+    static let ringToValue: CGFloat = 1
     static var item: CGFloat { ring + ringToValue + valueHeight }
-    static let itemGap: CGFloat = 10
-    /// Memory leads, set apart from the other three by a short hairline.
-    static let heroGap: CGFloat = 8
     static let bubbleWidth: CGFloat = 264
     static let bubbleHeight: CGFloat = 32
-    /// Along the bottom everything is a size quieter, to sit beside the Dock.
-    static let barItem: CGFloat = 34
-    static let barGap: CGFloat = 10
+    static let barItem = RailGeometry.slot
     static let barRadius: CGFloat = 15
 
-    private var ringSize: CGFloat { bottom ? 22 : Self.ring }
-    private var ringLine: CGFloat { bottom ? 2.3 : Self.ringLine }
+    private var ringSize: CGFloat { Self.ring }
+    private var ringLine: CGFloat { Self.ringLine }
 
-    static var readoutsHeight: CGFloat { item * 3 + heroGap * 2 + 1 + itemGap }
-
-    /// Distance from the tab's top to the centre of readout `index`
-    /// (0 memory, 1 AI, 2 sessions).
+    /// Readout identities are Mac (memory), AI and Sessions. They never
+    /// borrow another section's position when the rail opens.
+    private static let readoutSlots = [PanelPage.mac.rawValue, PanelPage.ai.rawValue, PanelPage.agents.rawValue]
     static func ringCenter(_ index: Int) -> CGFloat {
-        let top = (RailController.tabSize.height - readoutsHeight) / 2
-        let before: CGFloat
-        switch index {
-        case 0: before = 0
-        case 1: before = item + heroGap * 2 + 1
-        default: before = item * 2 + heroGap * 2 + 1 + itemGap
-        }
-        return top + before + ring / 2
+        RailGeometry.center(readoutSlots[min(2, max(0, index))])
     }
 
-    /// Where an alert's bubble comes out: beside the readout it is about,
-    /// or the middle of the tab for one about nothing on it.
     static func bubbleCenter(for alert: LiveActivity?) -> CGFloat {
         readoutIndex(for: alert).map(ringCenter) ?? RailController.tabSize.height / 2
     }
 
-    /// Which readout an alert is about: 0 memory, 1 AI, 2 sessions.
     static func readoutIndex(for alert: LiveActivity?) -> Int? {
         let key = alert?.key ?? ""
         if key == "mem" { return 0 }
@@ -969,16 +934,9 @@ struct RailView: View {
         return nil
     }
 
-    /// Along the bottom: distance from the bar's left end to the middle of
-    /// readout `index`, or the bar's middle.
     static func barCenter(_ index: Int?) -> CGFloat {
-        let width = RailController.barSize.width
-        guard let index else { return width / 2 }
-        let row = barItem * 3 + barGap + 1 + heroGap * 2
-        var x = (width - row) / 2 + barItem / 2
-        if index >= 1 { x += barItem + 1 + heroGap * 2 }
-        if index >= 2 { x += barItem + barGap }
-        return x
+        guard let index else { return RailController.barSize.width / 2 }
+        return RailGeometry.center(readoutSlots[min(2, max(0, index))], bottom: true)
     }
 
     // MARK: Body
@@ -1040,14 +998,8 @@ struct RailView: View {
     private var tab: some View {
         ZStack(alignment: right ? .topTrailing : .topLeading) {
             outline
-            Group {
-                if state.phase == .expanded {
-                    column.transition(.opacity)
-                } else {
-                    readouts.transition(.opacity)
-                }
-            }
-            .frame(width: RailController.tabSize.width, height: size.height)
+            slots
+                .frame(width: RailController.tabSize.width, height: size.height)
             if state.phase == .alert, let a = state.alert {
                 bubbleContent(a)
                     .frame(width: Self.bubbleWidth - 24, height: Self.bubbleHeight)
@@ -1067,13 +1019,7 @@ struct RailView: View {
     private var bar: some View {
         ZStack {
             dockGlass
-            Group {
-                if state.phase == .expanded {
-                    row.transition(.opacity)
-                } else {
-                    readoutsRow.transition(.opacity)
-                }
-            }
+            slots
         }
     }
 
@@ -1082,7 +1028,7 @@ struct RailView: View {
     @ViewBuilder
     private var dockGlass: some View {
         let shape = RoundedRectangle(cornerRadius: Self.barRadius, style: .continuous)
-        if #available(macOS 26.0, *), !snapshot {
+        if #available(macOS 26.0, *), !snapshot, !HMotion.reduceTransparency {
             Color.clear.glassEffect(.regular, in: shape)
         } else {
             GlassShape(shape: shape)
@@ -1091,34 +1037,24 @@ struct RailView: View {
 
     // MARK: Resting
 
-    private var readouts: some View {
-        VStack(spacing: 0) {
-            memoryReadout
-            Capsule().fill(HP.track)
-                .frame(width: 14, height: 1)
-                .padding(.vertical, Self.heroGap)
-            aiReadout
-            Spacer().frame(height: Self.itemGap)
-            sessionReadout
+    /// All six targets exist in every phase, with the same identity, center
+    /// and accessible hit area. Expanding only reveals the card/highlight.
+    @ViewBuilder
+    private var slots: some View {
+        if bottom {
+            HStack(spacing: 0) {
+                ForEach(PanelPage.allCases, id: \.rawValue) { sectionButton($0) }
+            }
+            .padding(.horizontal, RailGeometry.bottomInset)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(PanelPage.allCases, id: \.rawValue) { sectionButton($0) }
+            }
+            .padding(.vertical, RailGeometry.endInset)
         }
-        .frame(height: Self.readoutsHeight)
-        .help("Hotch · hover to open, drag to move to either edge")
     }
 
-    private var readoutsRow: some View {
-        HStack(spacing: 0) {
-            memoryReadout
-            Capsule().fill(HP.track)
-                .frame(width: 1, height: 18)
-                .padding(.horizontal, Self.heroGap)
-            aiReadout
-            Spacer().frame(width: Self.barGap)
-            sessionReadout
-        }
-        .help("Hotch · hover to open, drag to move to any edge")
-    }
-
-    /// Memory leads: it is what decides whether the Mac feels slow. The ring
+    /// Memory gives the Mac slot its live context. The ring
     /// is memory used; amber, then red, as the kernel reports pressure.
     private var memoryReadout: some View {
         let memory = system.latest?.memory
@@ -1144,7 +1080,7 @@ struct RailView: View {
             ring(tight.flatMap { $0.1.fillShare(mode) },
                  color: critical ? HP.red : (identity?.accent ?? HP.text3)) {
                 if let identity {
-                    BrandMark(kind: identity.mark, size: bottom ? 9.5 : 11, tint: identity.accent)
+                    BrandMark(kind: identity.mark, size: 8, tint: identity.accent)
                 } else {
                     icon(PanelPage.ai.symbol)
                 }
@@ -1182,29 +1118,27 @@ struct RailView: View {
 
     static let sessionSlots = 6
 
-    /// A ring with its icon in the middle and the value underneath; one size
-    /// for all four.
+    /// A ring with its icon in the middle and the value underneath.
     private func readout<Ring: View>(_ number: String?, unit: String?, tint: Color,
                                      @ViewBuilder ring: () -> Ring) -> some View {
-        VStack(spacing: bottom ? 2 : Self.ringToValue) {
+        VStack(spacing: Self.ringToValue) {
             ring()
             Group {
                 if let number {
                     Text(number).foregroundStyle(tint)
-                        + Text(unit ?? "").font(.system(size: 8, weight: .semibold, design: .rounded))
+                        + Text(unit ?? "").font(.system(size: 7, weight: .semibold, design: .rounded))
                             .foregroundStyle(HP.text3)
                 } else {
                     Text("–").foregroundStyle(HP.text3)
                 }
             }
-            .font(.system(size: bottom ? 10 : 11, weight: .semibold, design: .rounded))
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
             .fixedSize()
-            .frame(height: bottom ? 12 : Self.valueHeight)
+            .frame(height: Self.valueHeight)
         }
-        .frame(width: bottom ? Self.barItem : RailController.tabSize.width,
-               height: bottom ? ringSize + 14 : Self.item)
+        .frame(width: RailGeometry.slot, height: Self.item)
     }
 
     private func ring<Center: View>(_ share: Double?, color: Color,
@@ -1229,43 +1163,47 @@ struct RailView: View {
 
     private func icon(_ symbol: String) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: bottom ? 8.5 : 10, weight: .semibold))
+            .font(.system(size: 8, weight: .semibold))
             .foregroundStyle(HP.text2)
     }
 
     private var needsYou: Bool { sessionStore.needsInputCount > 0 }
 
-    // MARK: Open
+    // MARK: Section targets
 
-    private var column: some View {
-        VStack(spacing: 3) {
-            grip
-            ForEach(PanelPage.allCases, id: \.rawValue) { page in
-                sectionButton(page)
-            }
+    @ViewBuilder
+    private func sectionVisual(_ page: PanelPage) -> some View {
+        switch page {
+        case .mac: memoryReadout
+        case .ai: aiReadout
+        case .agents: sessionReadout
+        default:
+            Image(systemName: page.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(state.phase == .expanded && pages.page == page ? HP.text : HP.text3)
         }
     }
 
-    private var row: some View {
-        HStack(spacing: 2) {
-            VStack(spacing: 0) { grip }.rotationEffect(.degrees(90)).frame(width: 8, height: 28)
-            ForEach(PanelPage.allCases, id: \.rawValue) { page in
-                sectionButton(page)
-            }
+    private func sectionValue(_ page: PanelPage) -> String {
+        switch page {
+        case .mac:
+            return system.latest.map { "Memory, \(SysFmt.percent($0.memory.usedPercent)) percent used" } ?? "Memory unavailable"
+        case .ai:
+            let tight = tightestWindow(in: store)
+            return tight.flatMap { $0.1.percent(mode) }.map { "\(SysFmt.percent($0)) percent \(mode == .used ? "used" : "remaining")" } ?? "AI usage unavailable"
+        case .agents:
+            let count = sessionStore.sessions.filter { $0.activity <= .shell }.count
+            return "\(count) active sessions" + (needsYou ? ", needs attention" : "")
+        default: return ""
         }
     }
 
-    /// One section icon. The selection is a single highlight that slides
-    /// between icons; the icon under the pointer lights faintly until the
-    /// pointer rests long enough to open it.
     private func sectionButton(_ page: PanelPage) -> some View {
-        let selected = page == pages.page && !pages.backpackCard
+        let selected = state.phase == .expanded && page == pages.page && !pages.backpackCard
         let hovered = state.hovered == page && !selected
         return Button { onSelect(page) } label: {
-            Image(systemName: page.symbol)
-                .font(.system(size: bottom ? 12 : 13, weight: .semibold))
-                .frame(width: bottom ? 28 : 32, height: bottom ? 28 : 30)
-                .foregroundStyle(selected ? HP.text : (hovered ? HP.text2 : HP.text3))
+            sectionVisual(page)
+                .frame(width: RailGeometry.slot, height: RailGeometry.slot)
                 .background {
                     if selected {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -1280,19 +1218,11 @@ struct RailView: View {
         }
         .buttonStyle(.plain)
         .onHover { onHover(page, $0) }
-        .help(page.title)
-    }
-
-    /// Two short bars at the top of the open column: says it can be picked up.
-    private var grip: some View {
-        VStack(spacing: 2.5) {
-            Capsule().frame(width: 14, height: 2)
-            Capsule().frame(width: 14, height: 2)
-        }
-        .foregroundStyle(HP.text3.opacity(0.7))
-        .frame(width: 30, height: 10)
-        .contentShape(Rectangle())
-        .help("Drag to move, to either edge")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(page.title)
+        .accessibilityValue(sectionValue(page))
+        .accessibilityHint(state.phase == .expanded ? "Show section" : "Open section. Drag to move the rail.")
+        .help(page.title + (sectionValue(page).isEmpty ? "" : " · " + sectionValue(page)))
     }
 
     // MARK: Speaking
@@ -1645,7 +1575,7 @@ final class FloatController {
         panel.ignoresMouseEvents = hidden
         guard (panel.alphaValue < 0.5) != hidden else { return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = hidden ? 0.2 : 0.14
+            context.duration = HMotion.reduceMotion ? 0.01 : (hidden ? 0.2 : 0.14)
             panel.animator().alphaValue = hidden ? 0 : 1
         }
     }
@@ -2164,8 +2094,9 @@ final class AnchorManager {
 
     /// Brings forward the app a session runs in and puts the card away.
     func jump(to session: AgentSession) {
-        guard SessionJump.go(to: session) else { return }
-        dismiss()
+        SessionJump.go(to: session) { [weak self] success in
+            if success { self?.dismiss() }
+        }
     }
 
     /// A click on an alert acts on it: a session waiting or finished goes to
@@ -2174,9 +2105,8 @@ final class AnchorManager {
         let key = alert.key
         if key.hasPrefix("need-") || key.hasPrefix("done-"),
            let id = key.split(separator: "-", maxSplits: 1).last.map(String.init),
-           let session = card.deps.sessionStore.sessions.first(where: { $0.id == id }),
-           SessionJump.go(to: session) {
-            dismiss()
+           let session = card.deps.sessionStore.sessions.first(where: { $0.id == id }) {
+            jump(to: session)
             return
         }
         switch true {

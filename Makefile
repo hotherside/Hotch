@@ -1,6 +1,6 @@
 APP_NAME    := Hotch
 BUNDLE_ID   := com.hojaejung.hotch
-VERSION     := 2.1.4
+VERSION     := 2.2.0
 AUTHOR      := Hojae Jung
 EMAIL       := hello@hotherside.com
 BUILD_DIR   := build
@@ -43,7 +43,7 @@ DMG_ICON_SIZE := 96
 # against it fails with "plugin for module 'SwiftUIMacros' not found". The newest
 # 26.x SDK predates that and builds the same app (deployment target 14).
 # Override with `make SDKROOT=...` once the CLT carries the plugin.
-SDKROOT     ?= $(shell ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.*.sdk 2>/dev/null | sort -V | tail -1)
+SDKROOT     ?= $(shell sdk=$$(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.*.sdk 2>/dev/null | sort -V | tail -1); if [ -n "$$sdk" ]; then echo "$$sdk"; else xcrun --sdk macosx --show-sdk-path; fi)
 export SDKROOT
 
 # Signing identity, auto-detected. Once a Developer ID Application certificate is
@@ -113,7 +113,7 @@ check-version:
 signing-status:
 	@if [ "$(SIGN_ID)" = "-" ]; then \
 	  echo "signing:   ad-hoc (no Developer ID Application certificate found)"; \
-	  echo "notarize:  not possible — see 'Making it open on a double click' in PROJECT.md"; \
+	  echo "notarize:  not possible — see RELEASING.md"; \
 	else \
 	  echo "signing:   $(SIGN_ID)"; \
 	  echo "team id:   $(TEAM_ID)"; \
@@ -580,3 +580,12 @@ helper-selftest: build
 
 clean:
 	rm -rf "$(BUILD_DIR)" .build .build-x86
+
+# Isolated checks: no real provider requests, clipboard capture, or power changes.
+.PHONY: check
+check: check-version build
+	"$(BIN)" --check-rail
+	"$(BIN)" --check-session-handoff
+	"$(BIN)" --check-welcome
+	"$(BIN)" --check-focus
+	"$(HELPER_BIN)" --self-test

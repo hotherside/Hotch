@@ -158,7 +158,7 @@ struct MacSection: View {
             Spacer(minLength: 4)
             Text(SysFmt.bytes(bytes)).foregroundStyle(HP.text2).monospacedDigit()
         }
-        .font(.system(size: 10.5))
+        .font(.system(size: 11))
     }
 
     private func networkTile(_ snap: SystemSnapshot) -> some View {
@@ -285,6 +285,9 @@ struct CoreBars: View {
         }
         .frame(height: height, alignment: .bottom)
         .animation(HMotion.tick, value: cpu.perCore)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Per-core CPU load")
+        .accessibilityValue(cpu.perCore.enumerated().map { "Core \($0.offset + 1): \(Int($0.element.rounded())) percent" }.joined(separator: ", "))
     }
 }
 
@@ -311,7 +314,9 @@ struct MacDetailView: View {
                 }
                 .buttonStyle(TileButtonStyle(radius: 8))
                 Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(HP.text)
-                Text(caption).font(.system(size: 11.5)).foregroundStyle(HP.text3).lineLimit(1)
+                if !layout.isPopover {
+                    Text(caption).font(.system(size: 11.5)).foregroundStyle(HP.text3).lineLimit(1)
+                }
                 Spacer(minLength: 4)
                 Text(headline)
                     .font(.system(size: 21, weight: .bold, design: .rounded))
@@ -321,13 +326,17 @@ struct MacDetailView: View {
                     .animation(HMotion.tick, value: headline)
             }
             .frame(height: 30)
+            if layout.isPopover, !caption.isEmpty {
+                Text(caption).font(.system(size: 11.5)).foregroundStyle(HP.text2)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
 
             let chart = VStack(alignment: .leading, spacing: 8) {
                 chartView.frame(height: layout.isPopover ? 110 : 150)
                 HStack {
                     Text("60 s ago"); Spacer(); Text(legend); Spacer(); Text("now")
                 }
-                .font(.system(size: 10.5))
+                .font(.system(size: 11))
                 .foregroundStyle(HP.text3)
                 if kind == .cpu, let cpu = system.latest?.cpu {
                     CoreBars(cpu: cpu, height: 32, barWidth: 14)
@@ -336,7 +345,7 @@ struct MacDetailView: View {
                         Spacer()
                         Text("\(cpu.efficiencyCoreCount) efficiency")
                     }
-                    .font(.system(size: 10.5)).foregroundStyle(HP.text3)
+                    .font(.system(size: 11)).foregroundStyle(HP.text3)
                 }
             }
             .padding(12)
@@ -349,7 +358,7 @@ struct MacDetailView: View {
                         HStack(spacing: 6) {
                             Text(row.name).foregroundStyle(HP.text).lineLimit(1)
                             if let detail = row.detail {
-                                Text(detail).font(.system(size: 10.5)).foregroundStyle(HP.text3).lineLimit(1)
+                                Text(detail).font(.system(size: 11)).foregroundStyle(HP.text3).lineLimit(1)
                                     .fixedSize()
                             }
                         }

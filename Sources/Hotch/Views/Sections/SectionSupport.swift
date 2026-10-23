@@ -135,3 +135,21 @@ enum AgentStatus {
         return SessionDisplay.age(for: s, now: now) ?? ""
     }
 }
+
+// Provider fetch failures preserve the last successful snapshot. Its age and
+// supplied detail remain visible instead of inventing a connection state.
+extension ProviderUsage {
+    func isStale(now: Date) -> Bool { now.timeIntervalSince(asOf) > 10 * 60 }
+
+    func freshnessCaption(now: Date) -> String? {
+        if needsSetup { return detail ?? "Finish setup in Settings" }
+        var parts: [String] = []
+        if let detail, !detail.isEmpty { parts.append(detail) }
+        if isStale(now: now) {
+            parts.append("Last reading \(Fmt.ago(asOf, now: now) ?? "over 10m ago") · may be out of date")
+        } else if windows.isEmpty && balance == nil && parts.isEmpty {
+            return "No usage reading available"
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}

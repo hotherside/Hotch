@@ -62,10 +62,13 @@ struct RingGauge: View {
                     .rotationEffect(.degrees(-90))
                     .shadow(color: isCritical ? effectiveIdentity.accent.opacity(0.6) : .clear,
                             radius: 4)
-                    .animation(.easeOut(duration: PanelMotion.ringSweep), value: active)
+                    .animation(HMotion.reduceMotion ? nil : .easeOut(duration: PanelMotion.ringSweep), value: active)
             }
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Usage meter")
+        .accessibilityValue(share.map { "\(Int(($0 * 100).rounded())) percent" } ?? "No reading")
     }
 }
 

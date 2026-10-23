@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible problem in Hotch
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check that the issue is reproducible on the latest available build. Do not include credentials, raw session transcripts, or private logs.
+  - type: input
+    id: version
+    attributes:
+      label: Hotch version
+      description: Find this in Settings → About.
+      placeholder: 2.2.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac model
+      placeholder: macOS 15.x, MacBook Pro (Apple Silicon)
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Provider connection or usage
+        - Sessions
+        - System readings
+        - Clipboard history
+        - Backpack mode
+        - Interface or layout
+        - Build or install
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Include a short, repeatable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Optional. Remove account identifiers, local paths, keys, and private project details before attaching anything.
+    validations:
+      required: false

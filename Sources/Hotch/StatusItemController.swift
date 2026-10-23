@@ -37,7 +37,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         deps.refresh = { [weak self] in self?.onRefreshRequested?() }
         deps.quit = { NSApp.terminate(nil) }
         deps.jump = { [weak self] session in
-            if SessionJump.go(to: session) { self?.hideCard() }
+            SessionJump.go(to: session) { [weak self] success in
+                if success { self?.hideCard() }
+            }
         }
         return CardPanelController(deps: deps)
     }()

@@ -125,7 +125,7 @@ final class SessionStore: ObservableObject {
         // A plain dispatch thread, not the cooperative pool: a scan can wait
         // on a child process (Codex's thread list), and a blocked read there
         // would hold a pool thread for the whole watchdog interval.
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             let found = SessionScanner.scan(now: now)
             DispatchQueue.main.async { [weak self] in
                 MainActor.assumeIsolated {

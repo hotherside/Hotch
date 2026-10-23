@@ -14,7 +14,7 @@ import SwiftUI
 enum HP {
     static let text = Dynamic.color(dark: .init(white: 1, alpha: 0.94), light: .init(white: 0, alpha: 0.88))
     static let text2 = Dynamic.color(dark: .init(white: 1, alpha: 0.66), light: .init(white: 0, alpha: 0.62))
-    static let text3 = Dynamic.color(dark: .init(white: 1, alpha: 0.50), light: .init(white: 0, alpha: 0.52))
+    static let text3 = Dynamic.color(dark: .init(white: 1, alpha: 0.58), light: .init(white: 0, alpha: 0.58))
     static let tile = Dynamic.color(dark: .init(white: 1, alpha: 0.055), light: .init(white: 0, alpha: 0.045))
     static let tileHover = Dynamic.color(dark: .init(white: 1, alpha: 0.095), light: .init(white: 0, alpha: 0.075))
     static let stroke = Dynamic.color(dark: .init(white: 1, alpha: 0.075), light: .init(white: 0, alpha: 0.07))
@@ -50,28 +50,15 @@ enum HP {
 /// unfold and fold). Springs throughout: the panel is one physical object, and
 /// everything that moves inside it moves the same way.
 enum HMotion {
-    /// Sections and the shape's height when the section changes.
-    static let section: Animation = .spring(duration: 0.34, bounce: 0.10)
-    /// The tab pill sliding to its new home.
-    static let tab: Animation = .spring(duration: 0.36, bounce: 0.14)
-    /// Numbers rolling and charts settling on each tick.
-    static let tick: Animation = .snappy(duration: 0.45)
-    /// A tile opening in place.
-    static let detail: Animation = .spring(duration: 0.38, bounce: 0.08)
-
-    /// Blur-in for a section arriving: the content sharpens into place rather
-    /// than sliding, so a tap feels like focusing on something, not moving a
-    /// carousel.
-    ///
-    /// The outgoing section leaves at once. Fading it out kept it in the
-    /// layout beside the incoming one, so the card's height jumped to both
-    /// together before settling.
-    static var sectionTransition: AnyTransition {
-        .asymmetric(
-            insertion: .modifier(active: BlurFade(amount: 1), identity: BlurFade(amount: 0)),
-            removal: .identity
-        )
-    }
+    /// Read the system preferences on access so newly shown surfaces stay in sync.
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    static var reduceTransparency: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency }
+    static var section: Animation? { reduceMotion ? nil : .spring(duration: 0.28, bounce: 0) }
+    static var tab: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
+    static var detail: Animation? { reduceMotion ? nil : .spring(duration: 0.28, bounce: 0) }
+    /// Live telemetry updates in place; animation is reserved for user actions.
+    static var tick: Animation? { nil }
+    static var sectionTransition: AnyTransition { reduceMotion ? .identity : .opacity }
 }
 
 struct BlurFade: ViewModifier {
@@ -79,8 +66,8 @@ struct BlurFade: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(1 - amount)
-            .blur(radius: 4 * amount)
-            .offset(y: 3 * amount)
+            .blur(radius: HMotion.reduceMotion || HMotion.reduceTransparency ? 0 : 4 * amount)
+            .offset(y: HMotion.reduceMotion ? 0 : 3 * amount)
     }
 }
 
@@ -92,8 +79,6 @@ struct TileBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fill))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(HP.stroke, lineWidth: 1))
     }
 }
 
@@ -119,11 +104,10 @@ struct TileButtonStyle: ButtonStyle {
                 .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
                 .background(RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(hovering ? HP.tileHover : HP.tile))
-                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(HP.stroke, lineWidth: 1))
-                .scaleEffect(configuration.isPressed ? 0.985 : 1)
-                .animation(.easeOut(duration: 0.14), value: hovering)
-                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+                .modifier(KeyboardFocusRing(radius: radius))
+                .scaleEffect(configuration.isPressed && !HMotion.reduceMotion ? 0.985 : 1)
+                .animation(HMotion.reduceMotion ? nil : .easeOut(duration: 0.14), value: hovering)
+                .animation(HMotion.reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
                 .onHover { hovering = $0 }
         }
     }
@@ -142,7 +126,22 @@ struct RowButtonStyle: ButtonStyle {
                 .contentShape(Rectangle())
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(hovering || configuration.isPressed ? HP.tile : .clear))
+                .modifier(KeyboardFocusRing(radius: 10))
                 .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// A consistent keyboard focus cue for custom button content.
+struct KeyboardFocusRing: ViewModifier {
+    @Environment(\.isFocused) private var isFocused
+    var radius: CGFloat = 10
+    func body(content: Content) -> some View {
+        content.overlay {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(HP.text2, lineWidth: isFocused ? 2 : 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }
@@ -156,12 +155,13 @@ struct PillButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: compact ? 11 : 12.5, weight: .semibold))
             .padding(.horizontal, compact ? 10 : 14)
-            .frame(height: compact ? 22 : 28)
+            .frame(height: compact ? 26 : 28)
             .foregroundStyle(foreground)
             .background(Capsule(style: .continuous).fill(background))
             .overlay(Capsule(style: .continuous).strokeBorder(kind == .plain ? HP.stroke : .clear, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.75 : 1)
             .contentShape(Capsule())
+            .modifier(KeyboardFocusRing(radius: 20))
     }
     private var background: Color {
         switch kind {
@@ -186,8 +186,8 @@ struct Kicker: View {
     var color: Color = HP.text3
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(0.9)
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(0.6)
             .foregroundStyle(color)
             .lineLimit(1)
     }
@@ -320,18 +320,21 @@ struct ForecastRing: View {
                     .trim(from: active ? max(0, 1 - solid - extra) : 1, to: active ? 1 - solid : 1)
                     .stroke(color.opacity(0.32), style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.5).delay(0.12), value: active)
+                    .animation(HMotion.reduceMotion ? nil : .easeOut(duration: 0.3), value: active)
                 Circle()
                     .trim(from: active ? 1 - solid : 1, to: 1)
                     .stroke(isCritical ? HP.red : color,
                             style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .shadow(color: isCritical ? HP.red.opacity(0.6) : .clear, radius: 4)
-                    .animation(.easeOut(duration: PanelMotion.ringSweep + 0.12), value: active)
+                    .animation(HMotion.reduceMotion ? nil : .easeOut(duration: PanelMotion.ringSweep), value: active)
                     .animation(HMotion.tick, value: solid)
             }
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Capacity meter")
+        .accessibilityValue(share.map { "\(Int(($0 * 100).rounded())) percent, \(isCritical ? "limit nearly reached" : "measured")" } ?? "No reading")
     }
 }
 
@@ -382,18 +385,18 @@ struct HotchTabBar: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: page.symbol)
-                            .font(.system(size: compact ? 10.5 : 12.5, weight: .semibold))
+                            .font(.system(size: compact ? 12 : 12.5, weight: .semibold))
                             .frame(width: compact ? 14 : 16, height: compact ? 14 : 16)
                         if selected {
                             Text(page.title)
-                                .font(.system(size: compact ? 10.5 : 12, weight: .semibold))
+                                .font(.system(size: compact ? 11.5 : 12, weight: .semibold))
                                 .lineLimit(1)
                                 .fixedSize()
-                                .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .leading)))
+                                .transition(HMotion.reduceMotion ? .identity : .opacity)
                         }
                     }
                     .padding(.horizontal, selected ? (compact ? 8 : 11) : (compact ? 5 : 8))
-                    .frame(height: compact ? 22 : 28)
+                    .frame(height: compact ? 26 : 28)
                     .foregroundStyle(selected ? HP.text : HP.text3)
                     .background {
                         if selected {
@@ -406,7 +409,10 @@ struct HotchTabBar: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .modifier(KeyboardFocusRing(radius: 20))
                 .help(page.title)
+                .accessibilityLabel(page.title)
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
         .padding(compact ? 2 : 3)

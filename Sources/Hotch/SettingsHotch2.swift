@@ -6,6 +6,7 @@ import SwiftUI
 struct HotchMoreSettings: View {
     @ObservedObject private var prefs = HotchPrefs.shared
     @ObservedObject private var backpack = BackpackManager.shared
+    var onPreviewAlert: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -34,7 +35,7 @@ struct HotchMoreSettings: View {
                 .font(.system(size: 12))
                 .toggleStyle(.checkbox)
                 .padding(.top, 8)
-            note("Screen edge: a tab with your tightest AI window, active sessions and CPU. Drag it anywhere and it lands on the nearest edge: left, right, or the bottom beside the Dock, where it lies down and covers nothing a window uses. Right-click it to switch edges. Push the pointer against it, or rest on it, and the card slides out. Floating: a pill or orb you can drop anywhere; it snaps to the nearer side. The menu bar icon is always there too, and also switches this from its right-click menu.")
+            note("The edge rail keeps six sections in place, with AI, session and memory readouts. Hover to peek; click to keep it open. Drag to move it or right-click to change edges. Floating companions can sit anywhere.")
 
             header("Menu bar").padding(.top, 18)
             Text("Show beside the usage number")
@@ -47,13 +48,20 @@ struct HotchMoreSettings: View {
             .font(.system(size: 12))
             .toggleStyle(.checkbox)
             .padding(.top, 6)
-            note("Plain text in the menu bar, like the system's own items. Off by default: the item stays one mark and one number until you ask for more.")
+            note("Optional live readings beside the menu bar icon.")
 
             header("Alerts").padding(.top, 18)
             Toggle("Speak up when something needs you", isOn: $prefs.notchAlerts)
                 .font(.system(size: 12))
                 .toggleStyle(.checkbox)
-            note("The edge tab or the floating pill briefly shows a short message when an agent needs you or finishes, a plan window passes 85%, the Mac runs hot or short of memory, or a focus timer ends. A few seconds each.")
+            note("Your screen companion briefly shows a message when an agent needs you or finishes, a plan window passes 85%, the Mac runs hot or short of memory, or a focus timer ends.")
+            Button("Try a sample alert", action: onPreviewAlert)
+                .controlSize(.small)
+                .padding(.top, 8)
+                .disabled(prefs.anchor == .menuBar)
+            if prefs.anchor == .menuBar {
+                note("Choose a screen edge, pill or orb to see companion alerts.")
+            }
 
             header("This Mac").padding(.top, 18)
             Toggle("Temperatures, fans and power", isOn: $prefs.advancedSensors)

@@ -91,6 +91,7 @@ enum Snapshot {
         let system = SystemMonitor.shared
         if demo {
             system.applyDemo(SystemDemo.make())
+            applyDemoFixture(store: store, sessions: sessionStore, clipboard: clipboard, focus: focus, system: system)
         } else {
             system.setDemand(.panel, for: "snapshot")
             let until = Date().addingTimeInterval(3.2)
@@ -344,6 +345,7 @@ enum Snapshot {
         let system = SystemMonitor.shared
         if demo {
             system.applyDemo(SystemDemo.make())
+            applyDemoFixture(store: store, sessions: sessionStore, clipboard: clipboard, focus: focus, system: system)
         } else {
             system.setDemand(.panel, for: "snapshot")
             let until = Date().addingTimeInterval(3.2)
@@ -430,6 +432,7 @@ enum Snapshot {
         seedDemoHistory(into: history)
         let system = SystemMonitor.shared
         system.applyDemo(SystemDemo.make())
+        applyDemoFixture(store: store, sessions: sessions, system: system)
         let pages = PopoverPageModel()
         for page in PanelPage.allCases {
             pages.page = page
@@ -472,6 +475,7 @@ enum Snapshot {
         seedDemoHistory(into: history)
         let system = SystemMonitor.shared
         system.applyDemo(SystemDemo.make())
+        applyDemoFixture(store: store, sessions: sessions, system: system)
         let pages = PopoverPageModel()
         let alert = LiveActivity(icon: .brand("codex"), leading: "Refactor upload…", trailing: "needs approval",
                                  tint: .white, trailingTint: HP.amber, dot: true, key: "need-demo")
@@ -498,9 +502,9 @@ enum Snapshot {
         let scene = HStack(alignment: .top, spacing: 36) {
             VStack(alignment: .trailing, spacing: 14) {
                 caption("Edge tab")
-                rail(.collapsed).frame(width: 46, height: 214)
+                rail(.collapsed).frame(width: RailController.tabSize.width, height: RailController.tabSize.height)
                 caption("Edge tab speaking")
-                rail(.alert).frame(width: 312, height: 214)
+                rail(.alert).frame(width: RailController.alertSize.width, height: RailController.alertSize.height)
                 caption("Pill")
                 float(.pill).frame(height: 34)
                 caption("Pill speaking")
@@ -520,12 +524,12 @@ enum Snapshot {
                                 showsTabs: false, scrollable: false)
                         .background(GlassBackground(radius: CardMetrics.radius))
                         .clipShape(RoundedRectangle(cornerRadius: CardMetrics.radius, style: .continuous))
-                    rail(.expanded).frame(width: 46, height: 266)
+                    rail(.expanded).frame(width: RailController.columnSize.width, height: RailController.columnSize.height)
                 }
                 caption("Bottom, beside the Dock: resting, open, speaking (label above)")
                 VStack(alignment: .leading, spacing: 14) {
-                    rail(.collapsed, side: .bottom).frame(width: 156, height: 44)
-                    rail(.expanded, side: .bottom).frame(width: 200, height: 44)
+                    rail(.collapsed, side: .bottom).frame(width: RailController.barSize.width, height: RailController.barSize.height)
+                    rail(.expanded, side: .bottom).frame(width: RailController.barOpenSize.width, height: RailController.barOpenSize.height)
                     VStack(spacing: 6) {
                         DockLabelView(state: {
                             let label = DockLabelState()
@@ -533,7 +537,7 @@ enum Snapshot {
                             label.visible = true
                             return label
                         }())
-                        rail(.alert, side: .bottom).frame(width: 156, height: 44)
+                        rail(.alert, side: .bottom).frame(width: RailController.barSize.width, height: RailController.barSize.height)
                     }
                 }
             }
@@ -552,7 +556,11 @@ enum Snapshot {
             FileHandle.standardError.write(Data("snapshot-anchors: render failed\n".utf8))
             exit(1)
         }
-        do { try png.write(to: URL(fileURLWithPath: path)) } catch { exit(1) }
+        do {
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try png.write(to: url)
+        } catch { exit(1) }
         print("anchors snapshot written to \(path)")
         exit(0)
     }
@@ -566,30 +574,8 @@ enum Snapshot {
         let store = UsageStore(providers: [ClaudeProvider(allowRemote: false), CodexProvider(allowRemote: false)])
         store.usages = demoUsages()
         store.lastRefresh = Date().addingTimeInterval(-32)
-        // Sessions anyone could be running, since these pictures get shared.
-        let now = Date()
         let sessions = SessionStore()
-        sessions.sessions = [
-            AgentSession(id: "page-1", providerID: "claude", name: "Add a dark mode toggle",
-                         projectName: "weather-app", activity: .needsInput,
-                         lastEventAt: now.addingTimeInterval(-3 * 60), startedAt: now.addingTimeInterval(-52 * 60),
-                         contextTokens: 178_400, contextLimit: 200_000),
-            AgentSession(id: "page-2", providerID: "claude", name: "Fix the flaky checkout test",
-                         projectName: "storefront", activity: .working,
-                         lastEventAt: now.addingTimeInterval(-6), startedAt: now.addingTimeInterval(-14 * 60),
-                         contextTokens: 94_100, contextLimit: 200_000),
-            AgentSession(id: "page-3", providerID: "codex", name: "Refactor upload pipeline",
-                         projectName: "photo-sync", activity: .working,
-                         lastEventAt: now.addingTimeInterval(-3), startedAt: nil,
-                         contextTokens: 41_235, contextLimit: 258_400),
-            AgentSession(id: "page-4", providerID: "claude", name: "Write the release notes",
-                         projectName: "Hotch", activity: .waiting,
-                         lastEventAt: now.addingTimeInterval(-11 * 60), startedAt: nil,
-                         contextTokens: 312_000, contextLimit: 1_000_000),
-            AgentSession(id: "page-5", providerID: "codex", name: "Edit email draft",
-                         projectName: "Documents", activity: .ended,
-                         lastEventAt: now.addingTimeInterval(-156 * 60), startedAt: nil),
-        ]
+        sessions.sessions = demoSessions()
         let history = UsageHistoryStore(persists: false)
         seedDemoHistory(into: history)
         let system = SystemMonitor.shared
@@ -598,6 +584,7 @@ enum Snapshot {
         clipboard.items = demoClipboardItems()
         let focus = FocusStore(persists: false)
         seedDemoFocus(into: focus)
+        applyDemoFixture(store: store, sessions: sessions, clipboard: clipboard, focus: focus, system: system)
         let alert = LiveActivity(icon: .brand("codex"), leading: "Refactor upload…", trailing: "needs approval",
                                  tint: .white, trailingTint: HP.amber, dot: true, key: "need-demo")
 
@@ -632,7 +619,7 @@ enum Snapshot {
         func open(_ page: PanelPage) -> some View {
             HStack(alignment: .top, spacing: 8) {
                 card(page)
-                rail(.expanded, page: page).frame(width: 46, height: 266)
+                rail(.expanded, page: page).frame(width: RailController.columnSize.width, height: RailController.columnSize.height)
             }
         }
         func write<V: View>(_ name: String, _ view: V) {
@@ -652,20 +639,27 @@ enum Snapshot {
         }
 
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        write("tab", rail(.collapsed).frame(width: 46, height: 214))
-        write("tab-alert", rail(.alert).frame(width: 312, height: 214))
+        write("tab", rail(.collapsed).frame(width: RailController.tabSize.width, height: RailController.tabSize.height))
+        write("tab-alert", rail(.alert).frame(width: RailController.alertSize.width, height: RailController.alertSize.height))
         write("open-now", open(.now))
         write("open-ai", open(.ai))
         write("open-sessions", open(.agents))
         write("open-mac", open(.mac))
+        write("open-focus", open(.focus))
+        write("open-clipboard", open(.clipboard))
+        write("tab-left", rail(.collapsed, side: .left).frame(width: RailController.tabSize.width, height: RailController.tabSize.height))
+        write("open-left", HStack(alignment: .top, spacing: RailGeometry.cardGap) {
+            rail(.expanded, side: .left).frame(width: RailController.columnSize.width, height: RailController.columnSize.height)
+            card(.now)
+        })
         // Card and rail apart, so a film can resize the card against a fixed rail.
-        for (name, page) in [("now", PanelPage.now), ("ai", .ai), ("sessions", .agents), ("mac", .mac)] {
+        for (name, page) in [("now", PanelPage.now), ("ai", .ai), ("sessions", .agents), ("mac", .mac), ("focus", .focus), ("clipboard", .clipboard)] {
             write("card-\(name)", card(page))
-            write("rail-\(name)", rail(.expanded, page: page).frame(width: 46, height: 266))
+            write("rail-\(name)", rail(.expanded, page: page).frame(width: RailController.columnSize.width, height: RailController.columnSize.height))
         }
         write("menubar-card", card(.now, menuBar: true))
-        write("bottom", rail(.collapsed, side: .bottom).frame(width: 156, height: 44))
-        write("bottom-open", rail(.expanded, side: .bottom).frame(width: 200, height: 44))
+        write("bottom", rail(.collapsed, side: .bottom).frame(width: RailController.barSize.width, height: RailController.barSize.height))
+        write("bottom-open", rail(.expanded, side: .bottom).frame(width: RailController.barOpenSize.width, height: RailController.barOpenSize.height))
         write("bottom-alert", VStack(spacing: 6) {
             DockLabelView(state: {
                 let label = DockLabelState()
@@ -673,7 +667,7 @@ enum Snapshot {
                 label.visible = true
                 return label
             }())
-            rail(.alert, side: .bottom).frame(width: 156, height: 44)
+            rail(.alert, side: .bottom).frame(width: RailController.barSize.width, height: RailController.barSize.height)
         })
         write("pill", float(.pill).frame(height: 34))
         write("pill-alert", float(.pill, alerting: true).frame(height: 64))
@@ -681,6 +675,226 @@ enum Snapshot {
         write("orb-alert", float(.orb, alerting: true).frame(height: 50))
         print("parts written to \(directory)")
         exit(0)
+    }
+
+    /// A compact README/social capture with the real 360pt card beside its
+    /// rail. The desktop is fictional; no screen pixels or user content enter
+    /// this render. Card and rail keep these coordinates across every page.
+    @MainActor
+    static func runOverviewAndExit(path: String, dark: Bool, page: PanelPage = .now) -> Never {
+        _ = NSApplication.shared
+        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let fixture = DemoScene()
+        fixture.pages.page = page
+        writeNative(desktopScene(fixture, phase: .expanded), size: desktopSize, path: path, dark: dark)
+        print("overview written to \(path) (fixture: \(demoFixture.rawValue), page: \(page.title))")
+        exit(0)
+    }
+
+    /// Native, consistently registered frames for a product loop. The PNGs
+    /// share a canvas, card attachment and fixed target centers, so a video
+    /// encoder can hold or crossfade frames without fabricating UI movement.
+    @MainActor
+    static func runStoryAndExit(directory: String, dark: Bool) -> Never {
+        _ = NSApplication.shared
+        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let fixture = DemoScene()
+        func write(_ name: String, phase: RailState.Phase) {
+            let path = (directory as NSString).appendingPathComponent(name + ".png")
+            writeNative(desktopScene(fixture, phase: phase), size: desktopSize, path: path, dark: dark)
+        }
+        write("00-resting", phase: .collapsed)
+        let pages: [(String, PanelPage)] = [("01-now", .now), ("02-ai", .ai), ("03-sessions", .agents),
+                                          ("04-mac", .mac), ("05-focus", .focus), ("06-clipboard", .clipboard)]
+        for (name, page) in pages {
+            fixture.pages.page = page
+            write(name, phase: .expanded)
+        }
+        write("07-alert", phase: .alert)
+        print("story frames written to \(directory) (fixture: \(demoFixture.rawValue))")
+        exit(0)
+    }
+
+    private static let desktopSize = CGSize(width: 740, height: 560)
+
+    @MainActor
+    private final class DemoScene {
+        let store = UsageStore(providers: [])
+        let sessions = SessionStore()
+        let clipboard = ClipboardStore()
+        let focus = FocusStore(persists: false)
+        let history = UsageHistoryStore(persists: false)
+        let system = SystemMonitor.shared
+        let pages = PopoverPageModel()
+        let now = Date()
+
+        init() {
+            store.usages = demoUsages(now: now)
+            store.lastRefresh = now.addingTimeInterval(-32)
+            sessions.sessions = demoSessions(now: now)
+            sessions.lastScan = now.addingTimeInterval(-4)
+            clipboard.items = demoClipboardItems(now: now)
+            seedDemoFocus(into: focus, now: now)
+            seedDemoHistory(into: history, now: now)
+            system.applyDemo(SystemDemo.make(now: now))
+            applyDemoFixture(store: store, sessions: sessions, clipboard: clipboard, focus: focus, system: system, now: now)
+        }
+    }
+
+    @MainActor
+    private static func desktopScene(_ fixture: DemoScene, phase: RailState.Phase) -> some View {
+        let state = RailState()
+        state.phase = phase
+        state.side = .right
+        state.alert = phase == .alert ? LiveActivity(icon: .brand("codex"), leading: "Refactor upload…",
+                                                    trailing: "needs approval", tint: .white,
+                                                    trailingTint: HP.amber, dot: true, key: "need-demo") : nil
+        let visible = CGRect(origin: .zero, size: desktopSize)
+        let rail = CGRect(x: visible.maxX - RailGeometry.width, y: 108,
+                          width: RailGeometry.width, height: RailGeometry.height)
+        let attachment = RailGeometry.cardAttachment(rail: rail, visible: visible, side: .right,
+                                                     maximumHeight: CardMetrics.maxSectionHeight + 76)
+        return ZStack(alignment: .topLeading) {
+            backdrop
+            VStack(alignment: .leading, spacing: 9) {
+                Text("Hotch").font(.system(size: 30, weight: .semibold, design: .rounded))
+                Text("AI usage. Sessions. This Mac.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            .foregroundStyle(.white)
+            .padding(.leading, 28)
+            .padding(.top, 48)
+            if phase == .expanded {
+                CompactCard(store: fixture.store, sessionStore: fixture.sessions, clipboard: fixture.clipboard,
+                            focus: fixture.focus, pages: fixture.pages, system: fixture.system,
+                            backpack: BackpackManager.shared, now: fixture.now, history: fixture.history,
+                            showsTabs: false, scrollable: true)
+                    .fixedSize()
+                    .background(GlassBackground(radius: CardMetrics.radius))
+                    .clipShape(RoundedRectangle(cornerRadius: CardMetrics.radius, style: .continuous))
+                    .shadow(color: .black.opacity(0.2), radius: 14, y: 6)
+                    .offset(x: rail.minX - RailGeometry.cardGap - CardMetrics.width,
+                            y: visible.height - attachment)
+            }
+            RailView(state: state, pages: fixture.pages, store: fixture.store, sessionStore: fixture.sessions,
+                     system: fixture.system, onSelect: { _ in }, onDrag: { _ in })
+                .frame(width: RailController.size(for: phase, side: .right).width, height: RailGeometry.height)
+                .offset(x: visible.maxX - RailController.size(for: phase, side: .right).width,
+                        y: visible.height - rail.maxY)
+            Text("Demo data")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.leading, 28)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 24)
+        }
+        .frame(width: desktopSize.width, height: desktopSize.height, alignment: .topLeading)
+        .clipped()
+    }
+
+    /// Capture an actual AppKit hosting view, including the real viewport of
+    /// scroll containers. The transparent offscreen window never takes focus.
+    @MainActor
+    private static func writeNative<V: View>(_ content: V, size: CGSize, path: String, dark: Bool) {
+        let host = NSHostingView(rootView: content
+            .environment(\.usageDisplayMode, AppSettings.shared.displayMode)
+            .environment(\.snapshotRendering, true)
+            .environment(\.colorScheme, dark ? .dark : .light))
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        host.frame = CGRect(origin: .zero, size: size)
+        window.contentView = host
+        window.orderFrontRegardless()
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        host.layoutSubtreeIfNeeded()
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            FileHandle.standardError.write(Data("snapshot-native: bitmap failed\n".utf8)); exit(1)
+        }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        window.orderOut(nil)
+        window.close()
+        guard let png = rep.representation(using: .png, properties: [:]) else {
+            FileHandle.standardError.write(Data("snapshot-native: encode failed\n".utf8)); exit(1)
+        }
+        do {
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try png.write(to: url)
+        } catch {
+            FileHandle.standardError.write(Data("snapshot-native: write failed: \(error)\n".utf8)); exit(1)
+        }
+    }
+
+    private enum DemoFixture: String, CaseIterable {
+        case rich, empty, stale, disconnected, highpressure, needsinput
+    }
+
+    private static var demoFixture: DemoFixture {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--snapshot-fixture") else { return .rich }
+        guard args.indices.contains(index + 1), let fixture = DemoFixture(rawValue: args[index + 1]) else {
+            FileHandle.standardError.write(Data("--snapshot-fixture must be rich, empty, stale, disconnected, highpressure or needsinput\n".utf8))
+            exit(2)
+        }
+        return fixture
+    }
+
+    /// Overrides only injected demo state. Live snapshot paths never call it.
+    @MainActor
+    private static func applyDemoFixture(store: UsageStore, sessions: SessionStore,
+                                         clipboard: ClipboardStore? = nil, focus: FocusStore? = nil,
+                                         system: SystemMonitor, now: Date = Date()) {
+        switch demoFixture {
+        case .rich: break
+        case .empty:
+            store.usages = []
+            store.lastRefresh = now
+            sessions.sessions = []
+            sessions.lastScan = now
+            clipboard?.items = []
+            focus?.inject(state: .idle, entries: [], memory: FocusMemory())
+        case .stale:
+            store.usages = store.usages.map { usage in
+                var stale = usage
+                stale.asOf = now.addingTimeInterval(-2 * 3600)
+                return stale
+            }
+            store.lastRefresh = now.addingTimeInterval(-2 * 3600)
+        case .disconnected:
+            store.usages = ["claude", "codex"].map {
+                ProviderUsage(providerID: $0, displayName: $0 == "claude" ? "Claude" : "Codex", windows: [],
+                              asOf: now, detail: "Connect in Settings", needsSetup: true)
+            }
+            store.lastRefresh = nil
+            sessions.sessions = []
+            sessions.lastScan = now
+        case .highpressure:
+            var demo = SystemDemo.make(now: now)
+            let total = demo.snapshot.memory.totalBytes
+            demo.snapshot.memory.usedBytes = UInt64(Double(total) * 0.94)
+            demo.snapshot.memory.appBytes = UInt64(Double(total) * 0.54)
+            demo.snapshot.memory.wiredBytes = UInt64(Double(total) * 0.15)
+            demo.snapshot.memory.compressedBytes = UInt64(Double(total) * 0.25)
+            demo.snapshot.memory.cachedBytes = UInt64(Double(total) * 0.02)
+            demo.snapshot.memory.freeBytes = UInt64(Double(total) * 0.01)
+            demo.snapshot.memory.pressure = .critical
+            demo.snapshot.memory.pressurePercent = 94
+            demo.snapshot.memory.swapUsedBytes = 4_294_967_296
+            demo.snapshot.memory.swapTotalBytes = 6_442_450_944
+            demo.memory = SystemDemo.series(seed: 31, base: 94, spread: 2, floor: 90)
+            system.applyDemo(demo)
+        case .needsinput:
+            sessions.sessions = [AgentSession(id: "demo-approval", providerID: "codex", name: "Refactor upload pipeline",
+                                              projectName: "photo-sync", activity: .needsInput,
+                                              lastEventAt: now.addingTimeInterval(-45), startedAt: now.addingTimeInterval(-23 * 60),
+                                              contextTokens: 41_235, contextLimit: 258_400)]
+            sessions.lastScan = now
+        }
     }
 
     /// Renders the settings window content to a PNG, for verifying the config
@@ -898,8 +1112,8 @@ enum Snapshot {
 
     // MARK: - Demo data
 
-    /// Today's real shape on this Mac: Claude on a Team seat with a session,
-    /// a weekly and a model-scoped weekly window; Codex on Pro lite, which
+    /// Fictional usage for a Claude Team seat with a session, a weekly and a
+    /// model-scoped weekly window; Codex on Pro lite, which
     /// meters a single weekly window. The Codex week is set to run out before
     /// its reset so the amber forecast renders, and the Claude session sits at
     /// 63% so a healthy ring renders beside it.
@@ -953,29 +1167,29 @@ enum Snapshot {
     static func demoSessions(now: Date = Date()) -> [AgentSession] {
         [
             AgentSession(id: "demo-1", providerID: "claude",
-                         name: "Add context usage ring to session tracker",
-                         projectName: "Hotch", activity: .needsInput,
+                         name: "Add a dark mode toggle",
+                         projectName: "weather-app", activity: .needsInput,
                          lastEventAt: now.addingTimeInterval(-3 * 60),
                          startedAt: now.addingTimeInterval(-52 * 60),
                          contextTokens: 178_400, contextLimit: 200_000),
             AgentSession(id: "demo-2", providerID: "claude",
-                         name: "Fix advert overflow on the group stage page",
-                         projectName: "UL FIFA 2026", activity: .working,
+                         name: "Fix the checkout test",
+                         projectName: "storefront", activity: .working,
                          lastEventAt: now.addingTimeInterval(-6),
                          startedAt: now.addingTimeInterval(-14 * 60),
                          contextTokens: 94_100, contextLimit: 200_000),
             AgentSession(id: "demo-3", providerID: "codex", name: "Refactor upload pipeline",
-                         projectName: "autofly-master", activity: .working,
+                         projectName: "photo-sync", activity: .working,
                          lastEventAt: now.addingTimeInterval(-3),
                          startedAt: nil,
                          contextTokens: 41_235, contextLimit: 258_400),
             AgentSession(id: "demo-4", providerID: "claude",
-                         name: "Review Hanno's survey mission feature branch",
-                         projectName: "UL Backstage", activity: .waiting,
+                         name: "Write the release notes",
+                         projectName: "demo-project", activity: .waiting,
                          lastEventAt: now.addingTimeInterval(-11 * 60),
                          startedAt: nil,
                          contextTokens: 312_000, contextLimit: 1_000_000),
-            AgentSession(id: "demo-5", providerID: "codex", name: "Edit email draft",
+            AgentSession(id: "demo-5", providerID: "codex", name: "Review the documentation",
                          projectName: "Documents", activity: .ended,
                          lastEventAt: now.addingTimeInterval(-156 * 60),
                          startedAt: nil),
@@ -987,8 +1201,8 @@ enum Snapshot {
     static func demoClipboardItems(now: Date = Date()) -> [ClipboardItem] {
         let fixtures: [(String, TimeInterval)] = [
             ("make dmg NOTARY_PROFILE=hotch", 40),
-            ("https://github.com/cshariq/Sapphire", 4 * 60),
-            ("The panel spans the menu bar on both sides of the notch, so a panel that accepted clicks would swallow them.", 11 * 60),
+            ("https://example.com/design-notes", 4 * 60),
+            ("A small interface should keep its place while the work changes around it.", 11 * 60),
             ("~/Library/Application Support/Hotch/usage-history.json", 26 * 60),
             ("df1f8ac2-4c11-4f2e-9d7a-note-not-a-real-token", 48 * 60),
         ]
@@ -1115,7 +1329,7 @@ enum Snapshot {
 
     /// The name sitting in the field for the idle render, and the one the
     /// memory below remembers a length for.
-    static let demoRememberedTitle = "Blade residue retrain"
+    static let demoRememberedTitle = "Sketch the settings screen"
 
     /// What this Mac has been told about these task names. The idle render is
     /// checking exactly this: the 30m pill is selected because a previous run

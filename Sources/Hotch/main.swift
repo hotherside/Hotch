@@ -49,6 +49,15 @@ if npArguments.contains("--diag-full") {
 if npArguments.contains("--diag") {
     Diagnostics.runBlockingAndExit(full: false)
 }
+if npArguments.contains("--check-rail") {
+    RailGeometryCheck.runBlockingAndExit()
+}
+if npArguments.contains("--check-session-handoff") {
+    SessionHandoffCheck.runBlockingAndExit()
+}
+if npArguments.contains("--check-welcome") {
+    MainActor.assumeIsolated { OnboardingCheck.runBlockingAndExit() }
+}
 if npArguments.contains("--check-focus") {
     MainActor.assumeIsolated {
         FocusCheck.runBlockingAndExit()
@@ -113,6 +122,18 @@ if npArguments.contains("--probe-thermals") {
 
 if npArguments.contains("--probe-card") {
     MainActor.assumeIsolated { Snapshot.runCardProbeAndExit() }
+}
+if npArguments.contains("--snapshot-overview") {
+    MainActor.assumeIsolated {
+        Snapshot.runOverviewAndExit(path: npValue(after: "--snapshot-overview", default: "build/overview.png"),
+                                   dark: npArguments.contains("--snapshot-dark"), page: npSnapshotPage)
+    }
+}
+if npArguments.contains("--snapshot-story") {
+    MainActor.assumeIsolated {
+        Snapshot.runStoryAndExit(directory: npValue(after: "--snapshot-story", default: "build/story"),
+                                dark: npArguments.contains("--snapshot-dark"))
+    }
 }
 
 if npArguments.contains("--snapshot-anchors") {

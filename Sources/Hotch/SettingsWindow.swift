@@ -133,6 +133,8 @@ struct SettingsView: View {
     /// happens below the fold. The real window always passes a height; only the
     /// renderer sees the whole column at once.
     var viewportHeight: CGFloat? = nil
+    var onShowWelcome: () -> Void = {}
+    var onPreviewAlert: () -> Void = {}
     var onAccountChanged: () -> Void = {}
 
     /// Mirrors `SMAppService`, which publishes nothing to observe. Seeded when
@@ -290,11 +292,7 @@ struct SettingsView: View {
             // Answers two questions that were previously left to be inferred from a
             // blank row: why a CLI is involved at all, and why a provider is on or
             // off without the user having touched the switch.
-            Text("Claude and Codex expose no usage API a third-party app can call, so Hotch "
-                 + "asks Claude Code and the Codex CLI, which are already signed in on this Mac "
-                 + "\u{2014} Hotch never holds their sign-in, and reading usage never spends "
-                 + "tokens. A provider switches itself on once it can report something; switch "
-                 + "one off to hide its row.")
+            Text("Claude and Codex use your existing CLI sign-ins to read usage. No prompts are sent. Turn off a provider to hide its row.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -315,7 +313,7 @@ struct SettingsView: View {
             .toggleStyle(.checkbox)
             .padding(.top, 2)
 
-            Text("Hotch reappears around the notch after every restart, with no window to reopen. It stays a menu bar accessory — nothing lands in the Dock or the app switcher.")
+            Text("Start quietly in your chosen position when you log in.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -337,7 +335,7 @@ struct SettingsView: View {
             }
             .padding(.top, 2)
 
-            Text("Both say the same thing — 45% used is 55% left. Rings and bars always fill in the same direction, left to right, whichever you pick, and turn red when a window is nearly spent.")
+            Text("Choose consumption or remaining capacity. Warning colors always reflect how close you are to the limit.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -347,13 +345,13 @@ struct SettingsView: View {
                 .font(.system(size: 12))
                 .toggleStyle(.checkbox)
                 .padding(.top, 10)
-            Text("The Clipboard page shows the last \(ClipboardStore.maxItems) copied texts. History lives in memory only — quitting forgets it — and anything a password manager marks concealed is never recorded. Switching this off stops watching the clipboard entirely.")
+            Text("The Clipboard page shows the last \(ClipboardStore.maxItems) copied texts. History lives in memory only — quitting forgets it — and items marked concealed are skipped. Turning this off stops watching and clears the history. Clipboard text is never sent to a provider.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
 
-            HotchMoreSettings()
+            HotchMoreSettings(onPreviewAlert: onPreviewAlert)
 
             sectionHeader("Updates").padding(.top, 18)
 
@@ -370,10 +368,19 @@ struct SettingsView: View {
             }
             .padding(.top, 2)
 
-            Text("This sets how often the panel updates. Claude Code and Codex are asked for usage at most every couple of minutes whatever is chosen here, because the vendors rate limit. API keys for Grok, Kimi and DeepSeek stay in Hotch's own support folder and only ever go to their own vendor; Hotch holds no Claude or Codex sign-in.")
+            Text("Provider requests also respect their minimum polling intervals. API keys stay in Hotch’s support folder and are sent only to their provider. Claude and Codex keep their own sign-in credentials.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+
+            sectionHeader("Welcome & privacy").padding(.top, 18)
+            Text("Sessions, focus history and Mac readings stay on this Mac. Hotch has no account or analytics service. Only enabled providers request usage or balance from their own services.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Show Welcome…", action: onShowWelcome)
+                .controlSize(.small)
                 .padding(.top, 8)
 
             credit
@@ -468,7 +475,7 @@ struct SettingsView: View {
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.small)
-            .help("Show \(config.name) in the notch panel")
+            .help("Show \(config.name) in the companion")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -739,6 +746,8 @@ final class SettingsWindowController {
     private let settings: AppSettings
     private let store: UsageStore
     private var window: NSWindow?
+    var onShowWelcome: () -> Void = {}
+    var onPreviewAlert: () -> Void = {}
 
     init(settings: AppSettings, store: UsageStore) {
         self.settings = settings
@@ -756,9 +765,10 @@ final class SettingsWindowController {
         // Rebuilt on every open so account and key status are read fresh — which
         // also means it always opens scrolled to the top.
         let view = SettingsView(settings: settings,
-                                viewportHeight: height) { [weak store] in
-            store?.requestRefresh()
-        }
+                                viewportHeight: height,
+                                onShowWelcome: onShowWelcome,
+                                onPreviewAlert: onPreviewAlert,
+                                onAccountChanged: { [weak store] in store?.requestRefresh() })
         let hosting = NSHostingController(rootView: view)
 
         if let window {

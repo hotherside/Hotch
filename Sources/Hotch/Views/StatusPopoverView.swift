@@ -15,13 +15,13 @@ enum PopoverTheme {
     static let heroSize: CGFloat = 17
     static let titleSize: CGFloat = 12.5
     static let valueSize: CGFloat = 15
-    static let bodySize: CGFloat = 11.5
-    static let captionSize: CGFloat = 10.5
-    static let microSize: CGFloat = 10
+    static let bodySize: CGFloat = 12
+    static let captionSize: CGFloat = 11
+    static let microSize: CGFloat = 11
     static let material: Material = .ultraThinMaterial
     static let primaryText = Color.primary
     static let secondaryText = Color.secondary
-    static let mutedText = Color.secondary.opacity(0.7)
+    static let mutedText = Color.secondary
     static let track = Color.primary.opacity(0.12)
     static let trackDim = Color.primary.opacity(0.06)
     static let divider = Color.primary.opacity(0.10)

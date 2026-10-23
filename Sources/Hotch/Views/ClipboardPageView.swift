@@ -10,7 +10,7 @@ enum ClipboardDisplay {
     static let disabledText = "clipboard history is switched off in Settings"
     /// The privacy statement, one line, on the page it applies to. Short
     /// enough to clear the page dots; the full version is in Settings.
-    static let footerText = "click to copy  \u{00B7}  text only  \u{00B7}  memory only"
+    static let footerText = "click to copy  \u{00B7}  text only"
 
     /// Tooltip body: the whole string, within reason. Tooltips are how a row
     /// answers "what is the rest of it" without a preview pane.
@@ -38,7 +38,7 @@ struct ClipboardPageRows: View {
                     .foregroundStyle(NotchTheme.mutedText)
                     .frame(maxWidth: .infinity, minHeight: NotchTheme.sessionRowHeight)
                     .opacity(active ? 1 : 0)
-                    .animation(PanelMotion.contentIn(after: active ? PanelMotion.brandLead : 0),
+                    .animation(HMotion.reduceMotion ? nil : PanelMotion.contentIn(after: active ? PanelMotion.brandLead : 0),
                                value: active)
             }
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -72,26 +72,27 @@ struct ClipboardPageRows: View {
 
                 if copiedID == item.id {
                     Text("copied")
-                        .font(.system(size: 9.5, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(NotchTheme.attention)
                         .fixedSize()
                 } else if let age = Fmt.ago(item.copiedAt, now: now) {
                     Text(age)
-                        .font(.system(size: 9.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(NotchTheme.mutedText)
                         .lineLimit(1)
                         .fixedSize()
                 }
             }
             .frame(height: NotchTheme.clipboardRowHeight)
+            .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle())
         .help(ClipboardDisplay.tooltip(for: item))
         .opacity(active ? 1 : 0)
-        .offset(y: active ? 0 : -4)
-        .animation(active ? PanelMotion.rowIn(index)
-                          : PanelMotion.rowOut(index, of: items.count),
+        .offset(y: active || HMotion.reduceMotion ? 0 : -4)
+        .animation(HMotion.reduceMotion ? nil : (active ? PanelMotion.rowIn(index)
+                          : PanelMotion.rowOut(index, of: items.count)),
                    value: active)
     }
 }
@@ -155,19 +156,22 @@ struct PopoverClipboardSection: View {
 
                 if copiedID == item.id {
                     Text("copied")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(NotchTheme.attention)
                         .fixedSize()
                 } else if let age = Fmt.ago(item.copiedAt, now: now) {
                     Text(age)
-                        .font(.system(size: 9))
+                        .font(.system(size: 11))
                         .foregroundStyle(PopoverTheme.mutedText)
                         .fixedSize()
                 }
             }
+            .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle())
         .help("Copy again")
+        .accessibilityLabel("Copy \(item.preview)")
+        .accessibilityValue(copiedID == item.id ? "Copied" : (Fmt.ago(item.copiedAt, now: now) ?? ""))
     }
 }

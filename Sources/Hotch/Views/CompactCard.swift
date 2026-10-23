@@ -17,10 +17,10 @@ enum CardMetrics {
 
 /// Type scale for the card.
 enum CT {
-    static let kicker: CGFloat = 9
-    static let caption: CGFloat = 10
-    static let body: CGFloat = 11
-    static let title: CGFloat = 11.5
+    static let kicker: CGFloat = 11
+    static let caption: CGFloat = 11
+    static let body: CGFloat = 12
+    static let title: CGFloat = 13
     static let value: CGFloat = 17
     static let smallValue: CGFloat = 14.5
 }
@@ -93,29 +93,7 @@ struct CompactCard: View {
                 Kicker(text: pages.backpackCard ? "Backpack" : pages.page.wingTitle)
             }
             Spacer(minLength: 4)
-            headline
         }
-    }
-
-    private var headline: some View {
-        HStack(spacing: 3) {
-            if let consumed = store.highestConsumedPercent {
-                let shown = mode == .used ? consumed : 100 - consumed
-                Text(Fmt.percent(shown)).fontWeight(.bold)
-                    .foregroundStyle(consumed >= NotchTheme.highConsumedThreshold ? HP.red : HP.text)
-                Text(mode.unit).foregroundStyle(HP.text3)
-            }
-            if let memory = system.latest?.memory {
-                Text("·").foregroundStyle(HP.text3)
-                Text("Mem").foregroundStyle(HP.text3)
-                Text("\(SysFmt.percent(memory.usedPercent))%").fontWeight(.bold)
-                    .foregroundStyle(memory.pressure == .critical ? HP.red : HP.text)
-            }
-        }
-        .font(.system(size: 10.5))
-        .monospacedDigit()
-        .lineLimit(1)
-        .fixedSize()
     }
 
     // MARK: Sections
@@ -158,7 +136,7 @@ struct CompactCard: View {
         // and new sections stood one above the other.
         if scrollable {
             ScrollView(.vertical) { content }
-                .scrollIndicators(.never)
+                .scrollIndicators(.automatic)
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(maxHeight: CardMetrics.maxSectionHeight)
                 .fixedSize(horizontal: false, vertical: true)
@@ -183,7 +161,7 @@ struct CompactCard: View {
                 .lineLimit(1)
             Spacer(minLength: 6)
             button(backpack.isOn ? "backpack.fill" : "backpack", help: "Backpack mode",
-                   tint: backpack.isOn ? HP.ok : HP.text2) {
+                   tint: backpack.isOn ? HP.ok : HP.text2, selected: pages.backpackCard) {
                 withAnimation(HMotion.section) { pages.backpackCard.toggle() }
             }
             if showsAppButtons {
@@ -199,25 +177,29 @@ struct CompactCard: View {
     private var footerText: String {
         if pages.backpackCard { return backpack.footerLine }
         switch pages.page {
-        case .now, .ai: return Fmt.ago(store.lastRefresh, now: now).map { "updated \($0)" } ?? "updating"
+        case .now, .ai:
+            if store.isRefreshing { return "Checking usage…" }
+            return Fmt.ago(store.lastRefresh, now: now).map { "Checked \($0)" } ?? "No usage check yet"
         case .agents: return sessionStore.summaryLine ?? "from each agent's own records"
-        case .mac: return "live · every second"
+        case .mac: return system.latest == nil ? "Waiting for Mac readings" : "live · every second"
         case .focus: return ""
         case .clipboard: return clipboard.enabled ? "memory only" : "clipboard history is off"
         }
     }
 
-    private func button(_ symbol: String, help: String, tint: Color = HP.text2,
+    private func button(_ symbol: String, help: String, tint: Color = HP.text2, selected: Bool = false,
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(tint)
-                .frame(width: 24, height: 20)
+                .frame(width: 26, height: 24)
                 .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
         .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -232,11 +214,13 @@ struct CompactNow: View {
     let nav: SectionNav
 
     private var shown: [ProviderUsage] {
-        store.usages.filter { !$0.windows.isEmpty || $0.balance != nil || $0.needsSetup || $0.detail != nil }
+        store.usages
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
+            CompactAgentsStrip(sessions: sessionStore.sessions, nav: nav)
+            Kicker(text: "AI capacity").padding(.horizontal, 2)
             if shown.isEmpty {
                 Button(action: nav.openSettings) {
                     HStack {
@@ -251,17 +235,18 @@ struct CompactNow: View {
                 VStack(spacing: 0) {
                     ForEach(Array(shown.prefix(4).enumerated()), id: \.element.id) { index, usage in
                         if index > 0 { Rectangle().fill(HP.stroke).frame(height: 1) }
-                        Button { nav.go(.ai) } label: {
+                        Button {
+                            if usage.needsSetup { nav.openSettings() } else { nav.go(.ai) }
+                        } label: {
                             CompactProviderRow(usage: usage, history: history, now: now, nav: nav)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RowButtonStyle())
                     }
                 }
                 .padding(.horizontal, 10)
                 .tile(radius: 12)
             }
-            CompactAgentsStrip(sessions: sessionStore.sessions, nav: nav)
-            CompactMacTiles(system: system, nav: nav)
+            CompactMacSummary(system: system, nav: nav)
         }
     }
 }
@@ -280,78 +265,49 @@ struct CompactProviderRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             ZStack {
                 if let window = tightest {
-                    let reading = WindowReading(window: window, providerID: usage.providerID,
-                                                history: history, now: now, mode: mode)
-                    ForecastRing(share: reading.share, projected: reading.projected,
-                                 isCritical: window.isCritical, color: identity.accent,
-                                 size: 32, lineWidth: 3.2)
+                    ForecastRing(share: window.fillShare(mode), isCritical: window.isCritical,
+                                 color: identity.accent, size: 32, lineWidth: 3)
                 } else {
-                    Circle().stroke(HP.track, lineWidth: 3.2).frame(width: 32, height: 32)
+                    Circle().stroke(HP.track, lineWidth: 3).frame(width: 32, height: 32)
                 }
                 BrandMark(kind: identity.mark, size: 13, tint: identity.accent)
             }
-            if let window = tightest {
-                let reading = WindowReading(window: window, providerID: usage.providerID,
-                                            history: history, now: now, mode: mode)
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 4) {
-                        Text(usage.displayName).foregroundStyle(identity.accent).fontWeight(.semibold)
-                        Text(window.displayName).foregroundStyle(HP.text3)
-                    }
-                    .font(.system(size: 10.5))
-                    .lineLimit(1)
-                    HStack(alignment: .firstTextBaseline, spacing: 1) {
-                        RollingNumber(value: window.percent(mode) ?? 0,
-                                      text: window.percent(mode).map { "\(Int($0.rounded()))" } ?? "—",
-                                      size: CT.value, color: window.isCritical ? HP.red : HP.text)
-                        Text("% \(mode.unit)").font(.system(size: CT.caption, weight: .semibold))
-                            .foregroundStyle(HP.text2)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    Text(usage.displayName).fontWeight(.semibold).foregroundStyle(HP.text)
+                    Spacer(minLength: 3)
+                    if let window = tightest {
+                        Text(window.percent(mode).map { "\(Fmt.percent($0)) \(mode.unit)" } ?? "No reading")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(window.isCritical ? HP.amber : HP.text)
+                            .monospacedDigit()
+                    } else if let balance = usage.balance {
+                        Text("\(Fmt.money(balance.amount, currency: balance.currency)) left")
+                            .fontWeight(.semibold).foregroundStyle(HP.text)
                     }
                 }
-                Spacer(minLength: 4)
-                VStack(alignment: .trailing, spacing: 1) {
-                    if let left = Fmt.remaining(to: window.resetsAt, now: now) {
-                        Text("resets \(left)").foregroundStyle(HP.text2)
-                    }
-                    Text(reading.compact).foregroundStyle(reading.verdictColor)
-                        .fontWeight(reading.alarming ? .semibold : .regular)
-                    if let others = otherLine(excluding: window) {
-                        Text(others).foregroundStyle(HP.text3)
-                    }
+                .font(.system(size: CT.body))
+                if let window = tightest {
+                    Text([window.displayName,
+                          Fmt.remaining(to: window.resetsAt, now: now).map { "Resets \($0)" } ?? "Reset time unavailable"]
+                        .joined(separator: " · "))
+                        .font(.system(size: CT.caption)).foregroundStyle(HP.text2)
+                        .lineLimit(1)
                 }
-                .font(.system(size: CT.caption))
-                .lineLimit(1)
-            } else {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(usage.displayName).font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(identity.accent)
-                    if let balance = usage.balance {
-                        Text("\(Fmt.money(balance.amount, currency: balance.currency)) credit left")
-                            .font(.system(size: CT.body, weight: .semibold)).foregroundStyle(HP.text)
-                    } else {
-                        Text(usage.detail ?? (usage.needsSetup ? "needs setup" : "no data yet"))
-                            .font(.system(size: CT.body)).foregroundStyle(HP.text2).lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 4)
-                if usage.needsSetup && usage.providerID == "claude" {
-                    Button("Sign in", action: nav.signInClaude)
-                        .buttonStyle(PillButtonStyle(compact: true))
+                if let status = usage.freshnessCaption(now: now) {
+                    Text(status).font(.system(size: CT.caption))
+                        .foregroundStyle(usage.needsSetup || usage.isStale(now: now) ? HP.amber : HP.text2)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .frame(height: 46)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
-    }
-
-    private func otherLine(excluding window: UsageWindow) -> String? {
-        let others = usage.windows.filter { $0 != window }
-            .map { "\($0.displayName.replacingOccurrences(of: " week", with: "")) \($0.percent(mode).map { Fmt.percent($0) } ?? "—")" }
-        let parts = others.isEmpty ? Array(usage.extras.prefix(1)) : Array(others.prefix(2))
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -364,58 +320,105 @@ struct CompactAgentsStrip: View {
     private var idle: Int { sessions.filter { $0.activity == .waiting }.count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button { nav.go(.agents) } label: {
-                HStack(spacing: 8) {
-                    Kicker(text: "Sessions")
-                    HStack(spacing: 3) {
-                        ForEach(sessions.filter { $0.activity != .ended }.prefix(8)) { s in
-                            Circle().fill(AgentStatus.color(s)).frame(width: 6, height: 6)
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(needing.prefix(2)) { session in
+                Button { nav.jump(session) } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(HP.amber)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Needs your attention")
+                                .font(.system(size: CT.caption, weight: .semibold)).foregroundStyle(HP.amber)
+                            Text(session.name).font(.system(size: CT.title, weight: .semibold))
+                                .foregroundStyle(HP.text).lineLimit(1)
+                            Text(session.waitingFor.flatMap { $0.isEmpty ? nil : $0 } ?? AgentStatus.word(session))
+                                .font(.system(size: CT.caption)).foregroundStyle(HP.text2).lineLimit(2)
                         }
+                        Spacer(minLength: 4)
+                        Image(systemName: "arrow.up.forward").foregroundStyle(HP.amber)
+                            .accessibilityHidden(true)
                     }
-                    Group {
-                        if sessions.isEmpty {
-                            Text("none running").foregroundColor(HP.text3)
-                        } else {
-                            Text("\(working)").fontWeight(.semibold).foregroundColor(HP.text)
-                                + Text(" working · \(idle) idle").foregroundColor(HP.text2)
-                        }
-                    }
-                    .font(.system(size: CT.body))
-                    .lineLimit(1)
-                    Spacer(minLength: 0)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(height: 32)
+                .buttonStyle(TileButtonStyle(radius: 12))
+                .help(session.waitingFor ?? "Go to the session")
+                .accessibilityElement(children: .combine)
+                .accessibilityHint("Opens \(session.surface ?? "the session’s app")")
+            }
+            Button { nav.go(.agents) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "terminal").foregroundStyle(HP.text2).accessibilityHidden(true)
+                    Text(summary).foregroundStyle(HP.text2)
+                    Spacer(minLength: 3)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(HP.text3).accessibilityHidden(true)
+                }
+                .font(.system(size: CT.body))
+                .padding(.horizontal, 4).frame(minHeight: 28)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .help("Open Sessions")
-            if let first = needing.first {
-                // The session waiting on you, one click from its app.
-                Button { nav.jump(first) } label: {
-                    HStack(spacing: 6) {
-                        Circle().fill(HP.amber).frame(width: 5, height: 5)
-                            .shadow(color: HP.amber.opacity(0.8), radius: 3)
-                        Text(first.name).foregroundStyle(HP.text).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(AgentStatus.word(first)).foregroundStyle(HP.amber).fixedSize()
-                        Image(systemName: "arrow.up.forward").font(.system(size: 8.5, weight: .bold))
-                            .foregroundStyle(HP.amber)
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(HP.amber.opacity(0.14)))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Go to \(first.surface ?? "its app")")
-                .padding(.horizontal, -4)
-                .padding(.bottom, 6)
-            }
+            .buttonStyle(RowButtonStyle())
+            .accessibilityLabel("Sessions: \(summary)")
         }
-        .padding(.horizontal, 10)
-        .tile(radius: 12)
+    }
+
+    private var summary: String {
+        let live = sessions.filter { $0.activity != .ended }.count
+        guard live > 0 else { return "No active sessions" }
+        var parts = ["\(working) working"]
+        if !needing.isEmpty { parts.append("\(needing.count) need you") }
+        if idle > 0 { parts.append("\(idle) idle") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// One calm entry point into the full Mac metrics page.
+struct CompactMacSummary: View {
+    @ObservedObject var system: SystemMonitor
+    let nav: SectionNav
+
+    private var warning: String? {
+        guard let snap = system.latest else { return nil }
+        if snap.memory.pressure == .critical { return "Memory pressure is high" }
+        if snap.thermal.state == .critical || snap.thermal.state == .serious { return "Mac is running hot" }
+        if snap.thermal.components.contains(where: { $0.tempC >= $0.hotAt }) { return "A component is running hot" }
+        if snap.memory.pressure == .warning { return "Memory pressure is raised" }
+        if snap.thermal.state == .fair || snap.thermal.components.contains(where: { $0.tempC >= $0.warmAt }) {
+            return "Mac is running warm"
+        }
+        if let power = snap.power, power.hasBattery, !power.isCharging, power.batteryPercent <= 20 {
+            return "Battery is low"
+        }
+        return nil
+    }
+
+    var body: some View {
+        Button { nav.go(.mac) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: warning == nil ? "laptopcomputer" : "exclamationmark.triangle")
+                    .font(.system(size: 17)).foregroundStyle(warning == nil ? HP.text2 : HP.amber)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(warning ?? (system.latest == nil ? "Reading your Mac…" : "Mac overview"))
+                        .font(.system(size: CT.body, weight: .semibold))
+                        .foregroundStyle(warning == nil ? HP.text : HP.amber)
+                    if let snap = system.latest {
+                        Text("CPU \(SysFmt.percent(snap.cpu.total))% · Memory \(SysFmt.percent(snap.memory.usedPercent))%")
+                            .font(.system(size: CT.caption)).monospacedDigit().foregroundStyle(HP.text2)
+                    } else {
+                        Text("Metrics appear when available").font(.system(size: CT.caption)).foregroundStyle(HP.text2)
+                    }
+                }
+                Spacer(minLength: 3)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(HP.text3).accessibilityHidden(true)
+            }
+            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(TileButtonStyle(radius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens all Mac metrics")
     }
 }
 
@@ -446,7 +449,7 @@ struct CompactMacTiles: View {
                         (Text("↓").foregroundColor(HP.down) + Text(SysFmt.rateShort(snap.network.downBytesPerSecond)))
                         (Text("↑").foregroundColor(HP.up) + Text(SysFmt.rateShort(snap.network.upBytesPerSecond)))
                     }
-                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(HP.text)
                     .lineLimit(1)
@@ -485,7 +488,7 @@ struct CompactMacTiles: View {
     private func value(_ v: Double, _ text: String, _ unit: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 0.5) {
             RollingNumber(value: v, text: text, size: CT.smallValue)
-            Text(unit).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(HP.text2)
+            Text(unit).font(.system(size: 11, weight: .semibold)).foregroundStyle(HP.text2)
         }
     }
 
@@ -501,7 +504,7 @@ struct CompactMacTiles: View {
                     if let dot {
                         Circle().fill(dot).frame(width: 5, height: 5)
                     } else if let trailing {
-                        Text(trailing).font(.system(size: 9)).foregroundStyle(HP.text3).lineLimit(1)
+                        Text(trailing).font(.system(size: 11)).foregroundStyle(HP.text3).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 1)
@@ -528,77 +531,75 @@ struct CompactAI: View {
     @Environment(\.usageDisplayMode) private var mode
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             if store.usages.isEmpty {
                 Text("No AI accounts switched on").font(.system(size: CT.body, weight: .semibold))
+                Button("Connect an account", action: nav.openSettings).buttonStyle(PillButtonStyle())
             }
             ForEach(store.usages) { usage in
                 let identity = ProviderIdentity.identity(for: usage.providerID)
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 7) {
-                        BrandMark(kind: identity.mark, size: 13, tint: identity.accent)
-                        Text(usage.displayName.uppercased())
-                            .font(.system(size: 10.5, weight: .bold)).tracking(0.7)
-                            .foregroundStyle(identity.accent)
+                        BrandMark(kind: identity.mark, size: 15, tint: identity.accent).accessibilityHidden(true)
+                        Text(usage.displayName).font(.system(size: CT.title, weight: .semibold))
+                            .foregroundStyle(HP.text)
                         Spacer(minLength: 4)
                         if let plan = usage.plan {
-                            Text(plan).font(.system(size: CT.caption)).foregroundStyle(HP.text3)
+                            Text(plan).font(.system(size: CT.caption)).foregroundStyle(HP.text2)
                         }
                     }
-                    .frame(height: 28)
-                    if usage.windows.isEmpty {
-                        HStack {
-                            Text(usage.balance.map { "\(Fmt.money($0.amount, currency: $0.currency)) credit left" }
-                                 ?? usage.detail ?? (usage.needsSetup ? "needs setup" : "no recent data"))
-                                .font(.system(size: CT.body)).foregroundStyle(HP.text2)
-                            Spacer()
-                            if usage.needsSetup && usage.providerID == "claude" {
-                                Button("Sign in with Claude Code", action: nav.signInClaude)
-                                    .buttonStyle(PillButtonStyle(compact: true))
-                            }
-                        }
-                        .frame(height: 34)
+                    if let balance = usage.balance {
+                        Text("\(Fmt.money(balance.amount, currency: balance.currency)) credit left")
+                            .font(.system(size: CT.value, weight: .semibold)).foregroundStyle(HP.text)
                     }
                     ForEach(usage.windows, id: \.self) { window in
                         let reading = WindowReading(window: window, providerID: usage.providerID,
                                                     history: history, now: now, mode: mode)
-                        Rectangle().fill(HP.stroke).frame(height: 1)
-                        HStack(spacing: 9) {
+                        HStack(alignment: .center, spacing: 10) {
                             ForecastRing(share: reading.share, projected: reading.projected,
                                          isCritical: window.isCritical, color: identity.accent,
-                                         size: 24, lineWidth: 3)
-                            Text(window.percent(mode).map { Fmt.percent($0) } ?? "—")
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(window.isCritical ? HP.red : HP.text)
-                                .frame(width: 40, alignment: .leading)
-                            (Text(window.displayName).fontWeight(.semibold).foregroundColor(HP.text)
-                             + Text(Fmt.remaining(to: window.resetsAt, now: now).map { " · resets \($0)" } ?? "")
-                                .foregroundColor(HP.text2))
-                                .font(.system(size: 10.5))
-                                .lineLimit(1)
-                            Spacer(minLength: 4)
-                            Text(reading.compact)
-                                .font(.system(size: CT.caption, weight: reading.alarming ? .semibold : .regular))
-                                .foregroundStyle(reading.verdictColor)
-                                .lineLimit(1)
+                                         size: 28, lineWidth: 3).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(window.displayName).fontWeight(.medium)
+                                    Spacer(minLength: 4)
+                                    Text(window.percent(mode).map { "\(Fmt.percent($0)) \(mode.unit)" } ?? "No reading")
+                                        .fontWeight(.semibold).monospacedDigit()
+                                        .foregroundStyle(window.isCritical ? HP.amber : HP.text)
+                                }
+                                .font(.system(size: CT.body)).foregroundStyle(HP.text)
+                                Text(Fmt.remaining(to: window.resetsAt, now: now).map { "Resets \($0)" } ?? "Reset time unavailable")
+                                    .font(.system(size: CT.caption)).foregroundStyle(HP.text2)
+                                if reading.alarming && !usage.isStale(now: now) {
+                                    Text(reading.compact).font(.system(size: CT.caption, weight: .medium))
+                                        .foregroundStyle(HP.amber)
+                                }
+                            }
                         }
-                        .frame(height: 36)
+                        .accessibilityElement(children: .combine)
+                    }
+                    if let status = usage.freshnessCaption(now: now) {
+                        Text(status).font(.system(size: CT.caption))
+                            .foregroundStyle(usage.needsSetup || usage.isStale(now: now) ? HP.amber : HP.text2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if usage.needsSetup {
+                        Button(usage.providerID == "claude" ? "Sign in with Claude Code" : "Open Settings",
+                               action: usage.providerID == "claude" ? nav.signInClaude : nav.openSettings)
+                            .buttonStyle(PillButtonStyle(compact: true))
                     }
                     if !usage.extras.isEmpty {
-                        Rectangle().fill(HP.stroke).frame(height: 1)
                         Text(usage.extras.joined(separator: " · "))
-                            .font(.system(size: CT.caption)).foregroundStyle(HP.text3)
-                            .frame(height: 26)
+                            .font(.system(size: CT.caption)).foregroundStyle(HP.text2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(.horizontal, 10)
-                .tile(radius: 12)
+                .padding(12).tile(radius: 12)
             }
             if store.usages.contains(where: { !$0.windows.isEmpty }) {
-                Text("Lighter arc: what the current pace spends before the reset")
-                    .font(.system(size: 9.5)).foregroundStyle(HP.text3)
-                    .padding(.leading, 2)
+                Text("Lighter arc estimates usage before the reset.")
+                    .font(.system(size: CT.caption)).foregroundStyle(HP.text3)
+                    .padding(.horizontal, 2)
             }
         }
     }
@@ -636,24 +637,26 @@ struct CompactAgents: View {
                         Text([s.projectName.isEmpty ? nil : s.projectName, s.surface,
                               s.contextPercent(mode).map { "\(Fmt.percent($0)) context" }]
                                 .compactMap { $0 }.joined(separator: " · "))
-                            .font(.system(size: 9.5)).foregroundStyle(HP.text3).lineLimit(1)
+                            .font(.system(size: 11)).foregroundStyle(HP.text3).lineLimit(1)
                     }
                     Spacer(minLength: 4)
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(AgentStatus.word(s)).font(.system(size: 10.5, weight: .semibold))
+                        Text(AgentStatus.word(s)).font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(AgentStatus.color(s))
-                        Text(AgentStatus.caption(s, now: now)).font(.system(size: 9.5))
+                        Text(AgentStatus.caption(s, now: now)).font(.system(size: 11))
                             .foregroundStyle(HP.text3).lineLimit(1)
                     }
                     .frame(maxWidth: 120, alignment: .trailing)
                 }
-                .frame(height: 40)
+                .frame(minHeight: 48)
                 .padding(.horizontal, 6)
                 }
                 // A live session is one click from the app it runs in.
                 .buttonStyle(RowButtonStyle())
                 .disabled(s.activity == .ended)
                 .help(s.activity == .ended ? "" : "Go to \(s.surface ?? "its app")")
+                .accessibilityElement(children: .combine)
+                .accessibilityHint(s.activity == .ended ? "Session has ended" : "Opens the session’s app")
                 .padding(.horizontal, -6)
             }
         }
@@ -692,7 +695,7 @@ struct CompactMac: View {
                                         .minimumScaleFactor(0.75)
                                 }
                             }
-                            .font(.system(size: 9)).foregroundStyle(HP.text3)
+                            .font(.system(size: 11)).foregroundStyle(HP.text3)
                         }
                     }
                     big(.network, "Net", SysFmt.rateShort(snap.network.downBytesPerSecond), "↓", HP.down,
@@ -725,7 +728,7 @@ struct CompactMac: View {
                 }
                 Spacer(minLength: 0)
             }
-            .font(.system(size: 10.5, weight: .medium))
+            .font(.system(size: 12, weight: .medium))
             .padding(.horizontal, 10)
             .frame(height: 28)
             .tile(radius: 10)
@@ -742,13 +745,13 @@ struct CompactMac: View {
                 HStack(spacing: 3) {
                     Kicker(text: label)
                     Spacer(minLength: 2)
-                    if let trailing { Text(trailing).font(.system(size: 9)).foregroundStyle(HP.text3).lineLimit(1) }
+                    if let trailing { Text(trailing).font(.system(size: 11)).foregroundStyle(HP.text3).lineLimit(1) }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text(value).font(.system(size: CT.smallValue, weight: .bold, design: .rounded))
                         .monospacedDigit().foregroundStyle(color)
                         .contentTransition(.numericText()).animation(HMotion.tick, value: value)
-                    Text(unit).font(.system(size: 9, weight: .semibold)).foregroundStyle(HP.text2)
+                    Text(unit).font(.system(size: 11, weight: .semibold)).foregroundStyle(HP.text2)
                 }
                 .lineLimit(1)
                 Spacer(minLength: 2)
@@ -792,12 +795,12 @@ struct ThermalsTile: View {
             HStack(spacing: 6) {
                 Kicker(text: "Temperatures")
                 Spacer(minLength: 4)
-                if let fans { Text(fans).font(.system(size: 9.5)).foregroundStyle(HP.text3) }
+                if let fans { Text(fans).font(.system(size: 11)).foregroundStyle(HP.text3) }
                 if !thermal.components.isEmpty { summary }
             }
             if thermal.components.isEmpty {
                 Text("reading the sensors…")
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(HP.text3)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 5), GridItem(.flexible())], spacing: 5) {
@@ -831,7 +834,7 @@ struct ThermalsTile: View {
             Circle().fill(shown.color).frame(width: 5, height: 5)
             Text(text)
         }
-        .font(.system(size: 9.5, weight: .semibold))
+        .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(shown.color)
         .padding(.horizontal, 7)
         .frame(height: 17)
@@ -842,11 +845,11 @@ struct ThermalsTile: View {
         let color = level(c).color
         return HStack(spacing: 5) {
             Image(systemName: c.symbol)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 12)
             Text(c.name)
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(HP.text)
                 .lineLimit(1)
             Spacer(minLength: 4)
@@ -906,7 +909,7 @@ struct CompactPopoverView: View {
                         onSignInClaude: onSignInClaude)
         }
         .environment(\.usageDisplayMode, settings.displayMode)
-        .background(flatBackground ? AnyShapeStyle(PopoverTheme.snapshotBackground)
+        .background(flatBackground || HMotion.reduceTransparency ? AnyShapeStyle(PopoverTheme.snapshotBackground)
                                    : AnyShapeStyle(PopoverTheme.material))
     }
 }

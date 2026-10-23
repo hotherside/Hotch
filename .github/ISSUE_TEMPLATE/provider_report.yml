@@ -1,0 +1,51 @@
+name: Provider compatibility
+description: Report a provider connection or usage-data issue
+title: "Provider: "
+labels: [provider]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Provider APIs and local clients change over time. Do not include API keys, auth files, or conversation transcripts. You can report a problem without attaching logs.
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Claude / Claude Code
+        - Codex
+        - Grok
+        - Kimi
+        - DeepSeek
+    validations:
+      required: true
+  - type: input
+    id: hotch-version
+    attributes:
+      label: Hotch version
+    validations:
+      required: true
+  - type: input
+    id: client-version
+    attributes:
+      label: Related provider app or CLI version
+      description: If the provider uses a local app or CLI. Leave blank if not applicable.
+  - type: dropdown
+    id: account-type
+    attributes:
+      label: Account or plan type
+      description: Use a broad plan name only; do not include identifying information.
+      options:
+        - Not sure
+        - Free
+        - Individual paid plan
+        - Team or organization plan
+        - API billing
+        - Other
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happens?
+      description: Include safe-to-share error text and expected behavior. Redact identifiers and local paths.
+    validations:
+      required: true

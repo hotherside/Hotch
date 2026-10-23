@@ -165,6 +165,9 @@ private struct FocusDonut: View {
             .frame(width: size - lineWidth * 4)
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Focus timer")
+        .accessibilityValue("\(value) \(caption)")
     }
 }
 
@@ -208,6 +211,7 @@ private struct FocusPill: View {
     let title: String
     var style: FocusPillStyle
     var bold: Bool = false
+    var selected: Bool = false
     /// True for pills carrying a task name: the text truncates when the caller
     /// caps the width from outside, instead of pushing the layout. The
     /// fixed-vocabulary length pills stay `fixedSize`.
@@ -232,6 +236,8 @@ private struct FocusPill: View {
                 .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
+        .modifier(KeyboardFocusRing(radius: 20))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private struct PillWidth: ViewModifier {
@@ -327,6 +333,7 @@ private struct MinutesField: View {
                             .strokeBorder(fieldStroke, lineWidth: 0.75))
                 )
                 .onSubmit(onSubmit)
+                .accessibilityLabel("Custom focus duration in minutes")
                 // Digits only, filtered as it is typed rather than rejected
                 // afterwards with an error nobody asked for.
                 .onChange(of: text) { _, new in
@@ -397,8 +404,8 @@ struct FocusPageContent: View {
             customFocused = false
         }
         .opacity(active ? 1 : 0)
-        .offset(y: active ? 0 : -4)
-        .animation(active ? PanelMotion.rowIn(0) : PanelMotion.rowOut(0, of: 1),
+        .offset(y: active || HMotion.reduceMotion ? 0 : -4)
+        .animation(HMotion.reduceMotion ? nil : (active ? PanelMotion.rowIn(0) : PanelMotion.rowOut(0, of: 1)),
                    value: active)
     }
 
@@ -531,7 +538,7 @@ struct FocusPageContent: View {
 
     private func choicePill(_ title: String, _ choice: LengthChoice) -> some View {
         FocusPill(title: title,
-                  style: length == choice ? .panelSelected : .panel) {
+                  style: length == choice ? .panelSelected : .panel, selected: length == choice) {
             length = choice
             nudge = false
         }
@@ -825,7 +832,7 @@ struct PopoverFocusSection: View {
 
     private func choicePill(_ title: String, _ choice: LengthChoice) -> some View {
         FocusPill(title: title,
-                  style: length == choice ? .popoverSelected : .popover) {
+                  style: length == choice ? .popoverSelected : .popover, selected: length == choice) {
             length = choice
             nudge = false
         }
@@ -835,7 +842,12 @@ struct PopoverFocusSection: View {
 
     @ViewBuilder
     private var running: some View {
-        HStack(alignment: .center, spacing: 15) {
+        // Reserve the whole ring, including the stroke outside its nominal
+        // frame. The title gets the remaining column width, so long task names
+        // wrap or truncate without widening the horizontal scroll viewport.
+        let ringExtent: CGFloat = 90
+        let gap: CGFloat = 12
+        HStack(alignment: .center, spacing: gap) {
             if let donut = FocusDisplay.donut(focus, now: now) {
                 FocusDonut(progress: focus.progress(now: now),
                            value: donut.value,
@@ -845,6 +857,9 @@ struct PopoverFocusSection: View {
                            fill: Color.primary.opacity(0.8),
                            valueColour: PopoverTheme.primaryText,
                            captionColour: PopoverTheme.mutedText)
+                    .padding(4)
+                    .frame(width: ringExtent, height: ringExtent)
+                    .fixedSize()
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -854,19 +869,17 @@ struct PopoverFocusSection: View {
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let caption = FocusDisplay.runCaption(focus) {
                     Text(caption)
                         .font(.system(size: PopoverTheme.captionSize))
                         .foregroundStyle(PopoverTheme.mutedText)
                 }
-                // Pause and Stop are not here any more: the run has a row in
-                // the log below, and the row is the run. Two sets of controls
-                // for one timer, eight points apart, was the page asking twice.
             }
-
-            Spacer(minLength: 0)
+            .frame(width: CardMetrics.column - ringExtent - gap, alignment: .leading)
         }
+        .frame(width: CardMetrics.column, alignment: .leading)
     }
 
     // MARK: Log
@@ -1016,10 +1029,12 @@ struct PopoverFocusSection: View {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(tint)
+                .frame(width: 24, height: 26)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
         .fixedSize()
     }
 
