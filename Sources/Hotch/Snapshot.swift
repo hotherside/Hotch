@@ -442,7 +442,7 @@ enum Snapshot {
                 let card = CompactCard(store: store, sessionStore: sessions, clipboard: ClipboardStore(),
                                        focus: FocusStore(persists: false), pages: pages, system: system,
                                        backpack: BackpackManager.shared, now: Date(), history: history,
-                                       showsTabs: false, scrollable: scrollable)
+                                       showsTabs: true, scrollable: scrollable)
                     .fixedSize()
                     .environment(\.usageDisplayMode, AppSettings.shared.displayMode)
                 let host = NSHostingView(rootView: card)
@@ -487,6 +487,9 @@ enum Snapshot {
             let state = RailState()
             state.phase = phase
             state.side = side
+            var policy = RailSlotPolicy()
+            policy.update(focusActive: focus.isRunning, expanded: phase == .expanded)
+            state.readouts = policy.targets
             if phase == .alert { state.alert = alert }
             return RailView(state: state, pages: pages, store: store, sessionStore: sessions, system: system, focus: focus,
                             onSelect: { _ in }, onDrag: { _ in })
@@ -519,12 +522,12 @@ enum Snapshot {
             }
             .frame(width: 320, alignment: .trailing)
             VStack(alignment: .leading, spacing: 14) {
-                caption("Open from the edge: card beside the section icons")
+                caption("Open from the edge: navigation inside the card")
                 HStack(alignment: .top, spacing: 8) {
                     CompactCard(store: store, sessionStore: sessions, clipboard: ClipboardStore(),
                                 focus: FocusStore(persists: false), pages: pages, system: system,
                                 backpack: BackpackManager.shared, now: Date(), history: history,
-                                showsTabs: false, scrollable: false)
+                                showsTabs: true, scrollable: false)
                         .background(GlassBackground(radius: CardMetrics.radius))
                         .clipShape(RoundedRectangle(cornerRadius: CardMetrics.radius, style: .continuous))
                     rail(.expanded).frame(width: RailController.columnSize.width, height: RailController.columnSize.height)
@@ -601,6 +604,9 @@ enum Snapshot {
             let state = RailState()
             state.phase = phase
             state.side = side
+            var policy = RailSlotPolicy()
+            policy.update(focusActive: focus.isRunning, expanded: phase == .expanded)
+            state.readouts = policy.targets
             if phase == .alert { state.alert = alert }
             return RailView(state: state, pages: pages(page), store: store, sessionStore: sessions, system: system, focus: focus,
                             onSelect: { _ in }, onDrag: { _ in })
@@ -615,7 +621,7 @@ enum Snapshot {
         func card(_ page: PanelPage, menuBar: Bool = false) -> some View {
             CompactCard(store: store, sessionStore: sessions, clipboard: clipboard, focus: focus,
                         pages: pages(page), system: system, backpack: BackpackManager.shared, now: Date(),
-                        history: history, showsTabs: menuBar, showsAppButtons: menuBar, scrollable: false)
+                        history: history, showsTabs: true, showsAppButtons: menuBar, scrollable: false)
                 .background(GlassBackground(radius: CardMetrics.radius))
                 .clipShape(RoundedRectangle(cornerRadius: CardMetrics.radius, style: .continuous))
         }
@@ -749,6 +755,9 @@ enum Snapshot {
         let state = RailState()
         state.phase = phase
         state.side = .right
+        var policy = RailSlotPolicy()
+        policy.update(focusActive: fixture.focus.isRunning, expanded: phase == .expanded)
+        state.readouts = policy.targets
         state.alert = phase == .alert ? LiveActivity(icon: .brand("codex"), leading: "Refactor upload…",
                                                     trailing: "needs approval", tint: .white,
                                                     trailingTint: HP.amber, dot: true, key: "need-demo") : nil
@@ -756,7 +765,7 @@ enum Snapshot {
         let rail = CGRect(x: visible.maxX - RailGeometry.width, y: 108,
                           width: RailGeometry.width, height: RailGeometry.height)
         let attachment = RailGeometry.cardAttachment(rail: rail, visible: visible, side: .right,
-                                                     maximumHeight: CardMetrics.maxSectionHeight + 76)
+                                                     maximumHeight: CardMetrics.maxHeight)
         return ZStack(alignment: .topLeading) {
             backdrop
             VStack(alignment: .leading, spacing: 9) {
@@ -772,7 +781,7 @@ enum Snapshot {
                 CompactCard(store: fixture.store, sessionStore: fixture.sessions, clipboard: fixture.clipboard,
                             focus: fixture.focus, pages: fixture.pages, system: fixture.system,
                             backpack: BackpackManager.shared, now: fixture.now, history: fixture.history,
-                            showsTabs: false, scrollable: true)
+                            showsTabs: true, scrollable: true)
                     .fixedSize()
                     .background(GlassBackground(radius: CardMetrics.radius))
                     .clipShape(RoundedRectangle(cornerRadius: CardMetrics.radius, style: .continuous))

@@ -15,18 +15,41 @@ enum RailGeometryCheck {
             CGRect(x: -1920, y: 25, width: 1920, height: 1030),
             CGRect(x: 1440, y: -640, width: 1024, height: 730),
         ]
-        let heights: [CGFloat] = [196, 324, 506]
-        check("six section targets have at least 32pt hit areas", RailGeometry.count == 6 && RailGeometry.slot >= 32)
+        let heights: [CGFloat] = [196, 324, CardMetrics.maxHeight]
+        check("three status targets have at least 40pt hit areas", RailGeometry.count == 3 && RailGeometry.slot >= 40)
+        check("side targets fit across the rail", RailGeometry.width >= RailGeometry.slot)
+        check("the side footprint reserves equal room around the targets",
+              RailGeometry.height == RailGeometry.endInset * 2 + CGFloat(RailGeometry.count) * RailGeometry.slot)
+        var policy = RailSlotPolicy()
+        check("idle readouts are AI, Sessions and Mac", policy.targets == [.ai, .sessions, .mac])
+        policy.update(focusActive: false, expanded: true)
+        policy.update(focusActive: true, expanded: true)
+        check("Focus starting cannot move an open Mac target", policy.targets == [.ai, .sessions, .mac])
+        policy.update(focusActive: true, expanded: false)
+        check("closing brings running Focus into the third slot", policy.targets == [.ai, .sessions, .focus])
+        policy.update(focusActive: true, expanded: true)
+        policy.update(focusActive: true, expanded: true)
+        check("a paused active timer keeps its Focus target", policy.targets == [.ai, .sessions, .focus])
+        policy.update(focusActive: false, expanded: true)
+        check("a finishing timer cannot move an open Focus target", policy.targets == [.ai, .sessions, .focus])
+        policy.update(focusActive: false, expanded: false)
+        check("closing restores Mac after Focus finishes", policy.targets == [.ai, .sessions, .mac])
+        policy.update(focusActive: true, expanded: true)
+        check("opening snapshots the current Focus state", policy.targets == [.ai, .sessions, .focus])
         for bottom in [false, true] {
             let extent = bottom ? RailGeometry.bottomWidth : RailGeometry.height
+            check("positions before the \(bottom ? "bar" : "rail") clamp to its first target",
+                  RailGeometry.nearestSlot(to: -1000, bottom: bottom) == 0)
+            check("positions after the \(bottom ? "bar" : "rail") clamp to its last target",
+                  RailGeometry.nearestSlot(to: extent + 1000, bottom: bottom) == RailGeometry.count - 1)
             for index in 0..<RailGeometry.count {
                 let center = RailGeometry.center(index, bottom: bottom)
                 check("\(bottom ? "bottom" : "side") target \(index) resolves across its whole hit area",
-                      [-15.5, 0, 15.5].allSatisfy {
+                      [-RailGeometry.slot / 2 + 0.01, 0, RailGeometry.slot / 2 - 0.01].allSatisfy {
                           RailGeometry.nearestSlot(to: center + $0, bottom: bottom) == index
                       })
                 check("target \(index) fits inside the \(bottom ? "bar" : "rail")",
-                      center - 16 >= 0 && center + 16 <= extent)
+                      center - RailGeometry.slot / 2 >= 0 && center + RailGeometry.slot / 2 <= extent)
             }
         }
         for (displayIndex, visible) in displays.enumerated() {
@@ -37,11 +60,12 @@ enum RailGeometryCheck {
                     switch side {
                     case .left: rail = CGRect(x: visible.minX, y: y, width: RailGeometry.width, height: RailGeometry.height)
                     case .right: rail = CGRect(x: visible.maxX - RailGeometry.width, y: y, width: RailGeometry.width, height: RailGeometry.height)
-                    case .bottom: rail = CGRect(x: visible.midX - RailGeometry.bottomWidth / 2, y: visible.minY - 34,
+                    case .bottom: rail = CGRect(x: visible.minX + 6 + (visible.width - RailGeometry.bottomWidth - 12) * fraction,
+                                               y: visible.minY - 34,
                                                width: RailGeometry.bottomWidth, height: 44)
                     }
-                    let attachment = RailGeometry.cardAttachment(rail: rail, visible: visible, side: side, maximumHeight: 506)
-                    let frames = heights.map { RailGeometry.cardFrame(size: CGSize(width: 360, height: $0), rail: rail,
+                    let attachment = RailGeometry.cardAttachment(rail: rail, visible: visible, side: side, maximumHeight: CardMetrics.maxHeight)
+                    let frames = heights.map { RailGeometry.cardFrame(size: CGSize(width: CardMetrics.width, height: $0), rail: rail,
                                                                       visible: visible, side: side, attachment: attachment) }
                     let label = "display \(displayIndex), \(side), position \(fraction)"
                     check("cards remain inside the display: \(label)", frames.allSatisfy { visible.contains($0) })

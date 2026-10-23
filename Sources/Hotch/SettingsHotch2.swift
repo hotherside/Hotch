@@ -35,7 +35,7 @@ struct HotchMoreSettings: View {
                 .font(.system(size: 12))
                 .toggleStyle(.checkbox)
                 .padding(.top, 8)
-            note("The edge rail keeps six sections in place on the left, right or bottom. Hover to peek; click to keep it open. Notch brings back the original top-of-screen view, with a small tab on displays without a notch. Pill and orb can sit anywhere. A running Focus timer stays visible on your companion.")
+            note("The edge tab shows AI usage, Sessions and Mac activity. An active Focus clock takes the Mac slot until it ends. Hover to peek; click to keep it open. All six sections stay available in the card's tabs. Notch brings back the original top-of-screen view. Pill and orb can sit anywhere.")
 
             header("Menu bar").padding(.top, 18)
             Text("Show beside the usage number")

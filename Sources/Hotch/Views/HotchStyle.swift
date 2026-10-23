@@ -46,16 +46,16 @@ enum HP {
 
 // MARK: - Motion
 
-/// Hotch 2's motion vocabulary, layered on `PanelMotion` (which still owns the
-/// unfold and fold). Springs throughout: the panel is one physical object, and
-/// everything that moves inside it moves the same way.
+/// Window motion belongs to the host. Content navigation uses short fades;
+/// telemetry updates in place without inheriting a spring.
 enum HMotion {
     /// Read the system preferences on access so newly shown surfaces stay in sync.
     static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     static var reduceTransparency: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency }
-    static var section: Animation? { reduceMotion ? nil : .spring(duration: 0.28, bounce: 0) }
+    static let sectionDuration: TimeInterval = 0.18
+    static var section: Animation? { reduceMotion ? nil : .easeInOut(duration: sectionDuration) }
     static var tab: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
-    static var detail: Animation? { reduceMotion ? nil : .spring(duration: 0.28, bounce: 0) }
+    static var detail: Animation? { reduceMotion ? nil : .easeInOut(duration: sectionDuration) }
     /// Live telemetry updates in place; animation is reserved for user actions.
     static var tick: Animation? { nil }
     static var sectionTransition: AnyTransition { reduceMotion ? .identity : .opacity }
@@ -367,62 +367,95 @@ struct SegmentBar: View {
 
 // MARK: - Tab bar
 
-/// Icon tabs with a sliding pill; the selected tab grows to show its label.
-/// The pill is one view moved with `matchedGeometryEffect`, so it travels
-/// between tabs on a spring instead of fading out of one and into another.
+/// Every destination owns a fixed target. Selection changes its fill, never
+/// its width or its neighbours’ positions; labels stay visible on every tab.
 struct HotchTabBar: View {
     @Binding var selection: PanelPage
     var pages: [PanelPage] = PanelPage.allCases
-    var dimSelection: Bool = false
-    /// The compact card's smaller row.
-    var compact: Bool = false
-    var onSelect: (PanelPage) -> Void = { _ in }
-    @Namespace private var ns
+    var dimSelection = false
+    var compact = false
+    var onSelect: ((PanelPage) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(pages, id: \.rawValue) { page in
                 let selected = page == selection && !dimSelection
                 Button {
-                    onSelect(page)
+                    if let onSelect { onSelect(page) }
+                    else { selection = page }
                 } label: {
-                    HStack(spacing: 6) {
+                    VStack(spacing: compact ? 3 : 2) {
                         Image(systemName: page.symbol)
-                            .font(.system(size: compact ? 12 : 12.5, weight: .semibold))
-                            .frame(width: compact ? 14 : 16, height: compact ? 14 : 16)
-                        if selected {
-                            Text(page.title)
-                                .font(.system(size: compact ? 11.5 : 12, weight: .semibold))
-                                .lineLimit(1)
-                                .fixedSize()
-                                .transition(HMotion.reduceMotion ? .identity : .opacity)
-                        }
+                            .font(.system(size: compact ? 13 : 13.5, weight: .semibold))
+                            .frame(height: compact ? 15 : 14)
+                            .accessibilityHidden(true)
+                        Text(page.title)
+                            .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
                     }
-                    .padding(.horizontal, selected ? (compact ? 8 : 11) : (compact ? 5 : 8))
-                    .frame(height: compact ? 26 : 28)
-                    .foregroundStyle(selected ? HP.text : HP.text3)
-                    .background {
-                        if selected {
-                            Capsule(style: .continuous)
-                                .fill(HP.pill)
-                                .shadow(color: .black.opacity(0.10), radius: 2, y: 1)
-                                .matchedGeometryEffect(id: "pill", in: ns)
-                        }
-                    }
-                    .contentShape(Capsule())
+                    .frame(width: compact ? 54 : 70, height: compact ? 40 : 32)
+                    .foregroundStyle(selected ? HP.text : HP.text2)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(selected ? HP.pill : .clear))
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
-                .modifier(KeyboardFocusRing(radius: 20))
+                .modifier(KeyboardFocusRing(radius: 8))
                 .help(page.title)
                 .accessibilityLabel(page.title)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .padding(compact ? 2 : 3)
-        .background(Capsule(style: .continuous).fill(HP.tile))
-        .overlay(Capsule(style: .continuous).strokeBorder(HP.stroke, lineWidth: 1))
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(HP.tile))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(HP.stroke, lineWidth: 1))
         .animation(HMotion.tab, value: selection)
         .animation(HMotion.tab, value: dimSelection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sections")
+    }
+}
+
+/// Outgoing and incoming pages overlap at the top rather than entering the
+/// vertical layout together. Identity belongs to the viewport: each navigation
+/// starts at the top, while ordinary telemetry leaves its scroll position and
+/// controls intact. The short fade is bounded by the viewport’s clip.
+struct SectionViewport<Content: View>: View {
+    let identity: String
+    let maximumHeight: CGFloat
+    let scrollable: Bool
+    let content: Content
+
+    init(identity: String, maximumHeight: CGFloat, scrollable: Bool,
+         @ViewBuilder content: () -> Content) {
+        self.identity = identity
+        self.maximumHeight = maximumHeight
+        self.scrollable = scrollable
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Group {
+                if scrollable {
+                    ScrollView(.vertical) {
+                        content.frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .scrollIndicators(.automatic)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: maximumHeight)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    content
+                }
+            }
+            .id(identity)
+            .transition(HMotion.sectionTransition)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
+        .animation(HMotion.section, value: identity)
     }
 }
 

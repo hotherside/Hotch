@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// A clock that fits a permanent 34pt rail target without shrinking six or
+/// A clock that fits a compact rail target without shrinking six or
 /// eight digits to illegibility. Long runs explicitly switch to hours.
 enum AnchorFocusClock {
     static func text(_ interval: TimeInterval, countingDown: Bool) -> String {
@@ -36,8 +36,8 @@ struct AnchorFocusReadout: View {
                 if style == .rail {
                     VStack(spacing: 1) {
                         Image(systemName: symbol)
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(time.value).font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(time.value).font(.system(size: 11.5, weight: .semibold, design: .rounded))
                     }
                     .frame(width: RailGeometry.slot, height: RailGeometry.slot)
                 } else {

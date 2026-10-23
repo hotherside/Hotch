@@ -1,9 +1,9 @@
 # 2.2.0 validation
 
-Local validation completed on 23 October 2026.
+Local validation completed on 24 October 2026.
 
-- `make check`: build succeeded with no compiler warnings or errors; 382 app checks and 75 simulated helper checks passed.
-- Rail checks cover six fixed targets, three edges, three display layouts (including negative coordinates), changing card heights and diagonal pointer paths.
+- `make check`: build succeeded with no compiler warnings or errors; 383 app checks and 75 simulated helper checks passed.
+- Rail checks cover three 44-point status targets, Focus/Mac slot changes with identities frozen while expanded, three edges, three display layouts (including negative coordinates), changing card heights and diagonal pointer paths.
 - Handoff checks cover known ancestry, unidentified terminals, ambiguous hosts and rejected launches. These checks do not activate real session windows.
 - Welcome checks cover fresh installs, explicit choices, upgrades and unfinished introductions.
 - Focus checks exercise explicit Timer/Stopwatch setup, custom validation, live clock publication, pause, resume, completion and persistence behavior.
@@ -17,5 +17,7 @@ Local validation completed on 23 October 2026.
 Performance follow-up: on an 18-core Apple Silicon Mac running macOS 27.0.1, a 20-second process CPU measurement with CPU detail open averaged approximately 4.0% of one core after the sizing/shadow changes. A separate 20-second tucked-away measurement averaged 2.1%. An earlier interactive sample before the changes averaged 15.0%; these short measurements on an active desktop are diagnostic observations, not a controlled benchmark or a battery-life guarantee. CPU time was measured from `proc_pid_rusage` deltas with the machine's Mach timebase conversion, independently of Hotch's UI. A controlled CPU-loop check also confirmed that the existing conversion is correct on this machine.
 
 The final performance build passed native smoke checks for live CPU and memory details, repopulating the Mac overview's Busiest row, growing/shrinking between Mac and Focus, reopening shorter Focus content, Escape dismissal, and switching pill/orb/edge placement. Screen-edge placement and the original Timer setup were restored without starting a focus session. Dragging during an in-progress shrink was reviewed in code but not reproduced manually.
+
+The compact-rail follow-up passed native smoke checks for all six fixed-position tabs, CPU process sampling, scrolling CPU detail then opening Focus at the top, growing from Clipboard to Now, and opening/closing a pinned card. A temporary countdown verified that a paused clock replaces Mac when tucked, opens Focus directly, and restores Mac after completion. Only that synthetic history entry was removed afterward. Native demo renders were inspected for the three-readout rail, bottom bar, expanded card and Notch tabs; the README screenshots and storyboard were refreshed. A separate read-only code review found no concrete regressions in slot freezing, Focus observation, hover targets or card sizing.
 
 The GIF in the README is a sequence of native view snapshots with demo data. It does not record hover timing. Pointer feel, multiple physical displays, Dock auto-hide, full VoiceOver navigation and Reduce Motion/Transparency need a hands-on pass. Intel/macOS 14 execution, real camera-cutout hardware, lid-close behavior and notarization were not validated here. The public repository's Actions tab records CI results separately from these local checks.

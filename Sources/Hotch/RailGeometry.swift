@@ -1,18 +1,18 @@
 import Foundation
 import CoreGraphics
 
-/// Shared geometry for the six permanent rail targets. Coordinates within a
+/// Shared geometry for the three large rail readouts. Coordinates within a
 /// side rail run down from its top; bottom-bar coordinates run from its left.
 enum RailGeometry {
     enum Side: CaseIterable { case left, right, bottom }
-    static let width: CGFloat = 42
-    static let height: CGFloat = 312
-    static let slot: CGFloat = 34
-    static let count = 6
-    static let endInset: CGFloat = 54
-    static let bottomInset: CGFloat = 16
+    static let width: CGFloat = 46
+    static let height: CGFloat = 224
+    static let slot: CGFloat = 44
+    static let count = 3
+    static let endInset: CGFloat = 46
+    static let bottomInset: CGFloat = 12
     static let bottomWidth = bottomInset * 2 + slot * CGFloat(count)
-    static let taper: CGFloat = 52
+    static let taper: CGFloat = 46
     static let cardGap: CGFloat = 8
     static let screenInset: CGFloat = 6
 
@@ -77,5 +77,21 @@ enum RailGeometry {
         let hull = Array(lower.dropLast()) + Array(upper.dropLast())
         guard hull.count >= 3 else { return false }
         return hull.indices.allSatisfy { cross(hull[$0], hull[($0 + 1) % hull.count], point) >= 0 }
+    }
+}
+
+/// A timer takes the third status slot while active, including when paused.
+/// Once the card opens, that mapping stays still beneath the pointer until
+/// closing applies the latest Focus state.
+struct RailSlotPolicy {
+    enum Target: Hashable, CaseIterable, Sendable { case ai, sessions, mac, focus }
+    private(set) var targets: [Target] = [.ai, .sessions, .mac]
+    private var wasExpanded = false
+
+    mutating func update(focusActive: Bool, expanded: Bool) {
+        if !expanded || !wasExpanded {
+            targets = [.ai, .sessions, focusActive ? .focus : .mac]
+        }
+        wasExpanded = expanded
     }
 }

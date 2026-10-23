@@ -14,7 +14,7 @@ Hotch is a native macOS companion for a glance at AI plan usage, active Claude C
 - A Focus timer or stopwatch with explicit controls and a persistent clock on your selected companion.
 - Discoverable Backpack mode for keeping agents awake with the lid closed, with one-time helper approval and automatic limits.
 - Optional in-memory clipboard history and brief alerts.
-- A stable six-section rail on the left, right or bottom; the original Notch view; floating pill and orb; or menu bar only.
+- A compact three-readout tab on the left, right or bottom, with all six sections inside the card; the original Notch view; floating pill and orb; or menu bar only.
 
 <img src="docs/images/app-icon.png" width="96" alt="Hotch app icon: a companion curve and warm signal">
 

@@ -9,6 +9,7 @@ struct MacSection: View {
     let active: Bool
     let layout: SectionLayout
     let nav: SectionNav
+    @State private var demandClient = "mac-overview-\(UUID().uuidString)"
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -47,8 +48,8 @@ struct MacSection: View {
             busiest
                 .modifier(Rise(active: active, index: 1))
         }
-        .onAppear { system.setDemand(.processes, for: "notch-mac-processes") }
-        .onDisappear { system.setDemand(.idle, for: "notch-mac-processes") }
+        .onAppear { system.setDemand(.processes, for: demandClient) }
+        .onDisappear { system.setDemand(.idle, for: demandClient) }
     }
 
     // MARK: Tiles
@@ -300,6 +301,7 @@ struct MacDetailView: View {
     let kind: SystemDetailKind
     let layout: SectionLayout
     let nav: SectionNav
+    @State private var demandClient = "mac-detail-\(UUID().uuidString)"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -404,8 +406,8 @@ struct MacDetailView: View {
             }
         }
         .frame(width: layout.width, alignment: .topLeading)
-        .onAppear { system.setDemand(.detail(kind), for: "detail") }
-        .onDisappear { system.setDemand(.idle, for: "detail") }
+        .onAppear { system.setDemand(.detail(kind), for: demandClient) }
+        .onDisappear { system.setDemand(.idle, for: demandClient) }
     }
 
     private var snap: SystemSnapshot? { system.latest }

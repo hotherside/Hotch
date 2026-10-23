@@ -105,6 +105,7 @@ struct StatusPopoverContent: View {
     var onOpenSettings: () -> Void
     var onQuit: () -> Void
     var onSignInClaude: () -> Void = {}
+    @State private var demandClient = "popover-\(UUID().uuidString)"
 
     private var columnWidth: CGFloat { PopoverTheme.width - PopoverTheme.contentPadding * 2 }
 
@@ -126,6 +127,7 @@ struct StatusPopoverContent: View {
             HStack {
                 HotchTabBar(selection: Binding(get: { pages.page }, set: { pages.select($0) }),
                             dimSelection: pages.backpackCard,
+                            compact: true,
                             onSelect: { pages.select($0) })
                 Spacer(minLength: 0)
             }
@@ -148,14 +150,25 @@ struct StatusPopoverContent: View {
         .frame(width: PopoverTheme.width, alignment: .leading)
         .background(flatBackground ? AnyShapeStyle(PopoverTheme.snapshotBackground)
                                    : AnyShapeStyle(PopoverTheme.material))
-        .onAppear { system.setDemand(.panel, for: "popover") }
-        .onDisappear { system.setDemand(.idle, for: "popover") }
+        .onAppear { system.setDemand(.panel, for: demandClient) }
+        .onDisappear { system.setDemand(.idle, for: demandClient) }
+    }
+
+    private var sectionIdentity: String {
+        pages.backpackCard ? "backpack" : "\(pages.page.rawValue)-\(pages.macDetail?.rawValue ?? "")"
+    }
+
+    private var section: some View {
+        SectionViewport(identity: sectionIdentity, maximumHeight: PopoverTheme.maxSectionHeight,
+                        scrollable: scrollable) {
+            sectionContent
+        }
     }
 
     @ViewBuilder
-    private var section: some View {
+    private var sectionContent: some View {
         let layout = SectionLayout.popover(width: columnWidth)
-        let content = Group {
+        Group {
             if pages.backpackCard {
                 BackpackCard(backpack: backpack, sessions: sessionStore.sessions, now: now,
                              layout: layout, active: true)
@@ -177,20 +190,6 @@ struct StatusPopoverContent: View {
                                             onCopy: { clipboard.copyBack($0) })
                 }
             }
-        }
-        .id(pages.backpackCard ? -1 : pages.page.rawValue)
-        .transition(HMotion.sectionTransition)
-
-        if scrollable && (pages.page == .agents || pages.page == .ai || pages.page == .clipboard) && !pages.backpackCard {
-            ScrollView(.vertical) { content }
-                .scrollIndicators(.never)
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(maxHeight: PopoverTheme.maxSectionHeight)
-                .animation(HMotion.section, value: pages.page)
-        } else {
-            content
-                .animation(HMotion.section, value: pages.page)
-                .animation(HMotion.section, value: pages.backpackCard)
         }
     }
 

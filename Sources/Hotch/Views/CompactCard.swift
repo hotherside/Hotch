@@ -13,6 +13,13 @@ enum CardMetrics {
     static var column: CGFloat { width - inset * 2 }
     static let maxSectionHeight: CGFloat = 430
     static let radius: CGFloat = 18
+    static let headerHeight: CGFloat = 44
+    /// Header, footer, their gaps, and the card’s outer vertical padding.
+    static let chromeHeight: CGFloat = headerHeight + 6 + 24 + 6 + 8 + 4
+    static let maxHeight: CGFloat = maxSectionHeight + chromeHeight
+    /// The viewport retains outgoing layout until its fade ends; the host
+    /// only needs a rendering turn before applying the resulting smaller size.
+    static var resizeSettle: TimeInterval { HMotion.reduceMotion ? 0 : 0.02 }
 }
 
 /// Type scale for the card.
@@ -35,7 +42,7 @@ struct CompactCard: View {
     @ObservedObject var backpack: BackpackManager
     let now: Date
     var history: UsageHistoryStore = .shared
-    /// The rail carries its own section icons, so its card hides the tab row.
+    /// Expanded cards keep all six destinations inside the content surface.
     var showsTabs: Bool = true
     /// The popover adds refresh and quit to the footer.
     var showsAppButtons: Bool = false
@@ -47,6 +54,7 @@ struct CompactCard: View {
     var onJump: (AgentSession) -> Void = { _ in }
 
     @Environment(\.usageDisplayMode) private var mode
+    @State private var demandClient = "card-\(UUID().uuidString)"
 
     private var nav: SectionNav {
         SectionNav(go: { pages.select($0) },
@@ -65,7 +73,7 @@ struct CompactCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .frame(height: 28)
+                .frame(height: showsTabs ? CardMetrics.headerHeight : 28)
                 .padding(.bottom, 6)
             section
                 .frame(width: CardMetrics.column, alignment: .topLeading)
@@ -77,14 +85,14 @@ struct CompactCard: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
         .frame(width: CardMetrics.width, alignment: .topLeading)
-        .onAppear { system.setDemand(.panel, for: "card") }
-        .onDisappear { system.setDemand(.idle, for: "card") }
+        .onAppear { system.setDemand(.panel, for: demandClient) }
+        .onDisappear { system.setDemand(.idle, for: demandClient) }
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: 6) {
+        Group {
             if showsTabs {
                 HotchTabBar(selection: Binding(get: { pages.page }, set: { pages.select($0) }),
                             dimSelection: pages.backpackCard,
@@ -93,16 +101,27 @@ struct CompactCard: View {
             } else {
                 Kicker(text: pages.backpackCard ? "Backpack" : pages.page.wingTitle)
             }
-            Spacer(minLength: 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Sections
 
-    @ViewBuilder
+    private var sectionIdentity: String {
+        pages.backpackCard ? "backpack" : "\(pages.page.rawValue)-\(pages.macDetail?.rawValue ?? "")"
+    }
+
     private var section: some View {
+        SectionViewport(identity: sectionIdentity, maximumHeight: CardMetrics.maxSectionHeight,
+                        scrollable: scrollable) {
+            sectionContent
+        }
+    }
+
+    @ViewBuilder
+    private var sectionContent: some View {
         let layout = SectionLayout.popover(width: CardMetrics.column)
-        let content = Group {
+        Group {
             if pages.backpackCard {
                 BackpackCard(backpack: backpack, sessions: sessionStore.sessions, now: now,
                              layout: layout, active: true)
@@ -128,27 +147,6 @@ struct CompactCard: View {
                                             onCopy: { clipboard.copyBack($0) })
                 }
             }
-        }
-        .id(pages.backpackCard ? "bp" : "\(pages.page.rawValue)-\(pages.macDetail?.rawValue ?? "")")
-        .transition(HMotion.sectionTransition)
-
-        // Always the same container: swapping a scroll view for a plain stack
-        // between sections rebuilt the whole area, and for a moment the old
-        // and new sections stood one above the other.
-        if scrollable {
-            ScrollView(.vertical) { content }
-                .scrollIndicators(.automatic)
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(maxHeight: CardMetrics.maxSectionHeight)
-                .fixedSize(horizontal: false, vertical: true)
-                .animation(HMotion.section, value: pages.page)
-                .animation(HMotion.section, value: pages.backpackCard)
-                .animation(HMotion.detail, value: pages.macDetail)
-        } else {
-            content
-                .animation(HMotion.section, value: pages.page)
-                .animation(HMotion.section, value: pages.backpackCard)
-                .animation(HMotion.detail, value: pages.macDetail)
         }
     }
 
@@ -670,6 +668,7 @@ struct CompactAgents: View {
 struct CompactMac: View {
     @ObservedObject var system: SystemMonitor
     let nav: SectionNav
+    @State private var demandClient = "compact-mac-\(UUID().uuidString)"
 
     var body: some View {
         VStack(spacing: 6) {
@@ -736,8 +735,8 @@ struct CompactMac: View {
                 ThermalsTile(thermal: snap.thermal)
             }
         }
-        .onAppear { system.setDemand(.processes, for: "compact-mac-processes") }
-        .onDisappear { system.setDemand(.idle, for: "compact-mac-processes") }
+        .onAppear { system.setDemand(.processes, for: demandClient) }
+        .onDisappear { system.setDemand(.idle, for: demandClient) }
     }
 
     private func big<C: View>(_ kind: SystemDetailKind, _ label: String, _ value: String, _ unit: String,
