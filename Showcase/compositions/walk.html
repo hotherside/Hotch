@@ -1,0 +1,267 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Bricolage Grotesque";
+      src: url("assets/fonts/bricolage-grotesque.woff2") format("woff2");
+      font-weight: 200 800;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+    }
+    #root img {
+      position: absolute;
+      display: block;
+    }
+    /* The tab and rail sit on the right edge, centred on y 560. */
+    #w-tab {
+      left: 1828px;
+      top: 346px;
+      width: 92px;
+      height: 428px;
+    }
+    .w-rail {
+      left: 1828px;
+      top: 294px;
+      width: 92px;
+      height: 532px;
+      opacity: 0;
+    }
+    #w-alert {
+      left: 1296px;
+      top: 346px;
+      width: 624px;
+      height: 428px;
+      opacity: 0;
+      clip-path: inset(0px 0px 0px 85.3%);
+    }
+    /* The card: a fixed column against the rail, clipped to the current section's height. */
+    #w-shadow {
+      position: absolute;
+      left: 1092px;
+      top: 139px;
+      width: 720px;
+      height: 842px;
+      border-radius: 36px;
+      box-shadow: 0 30px 64px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+    }
+    #w-card {
+      position: absolute;
+      left: 1092px;
+      top: 0;
+      width: 720px;
+      height: 1080px;
+      opacity: 0;
+      clip-path: inset(470px 0px 430px 640px round 36px);
+    }
+    #w-card-bg {
+      position: absolute;
+      inset: 0;
+      background: rgba(28, 28, 28, 0.98);
+    }
+    #w-card img {
+      left: 0;
+      width: 720px;
+    }
+    #w-c-mac {
+      top: 139px;
+      height: 842px;
+    }
+    #w-c-ses {
+      top: 280px;
+      height: 560px;
+      opacity: 0;
+    }
+    #w-c-ai {
+      top: 256px;
+      height: 608px;
+      opacity: 0;
+    }
+    /* Captions: left column, clear of the card. */
+    .w-cap {
+      position: absolute;
+      left: 150px;
+      top: 0;
+      width: 880px;
+      height: 1080px;
+    }
+    .w-cap .cap {
+      position: absolute;
+      left: 0;
+      top: 440px;
+      width: 880px;
+      font: 720 76px/1.04 "Bricolage Grotesque", sans-serif;
+      letter-spacing: -0.02em;
+      color: #f4f2fa;
+      text-shadow: 0 2px 24px rgba(10, 8, 18, 0.35);
+    }
+    .w-cap .w {
+      display: inline-block;
+    }
+    #w-cursor {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 40px;
+      height: 60px;
+    }
+    #w-cursor svg {
+      width: 40px;
+      height: 60px;
+      overflow: visible;
+      filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+    }
+  </style>
+  <div data-hf-id="hf-04fe" id="root" data-composition-id="walk" data-width="1920" data-height="1080">
+    <img data-hf-id="hf-so36" id="w-tab" src="assets/ui/tab.png" alt="Hotch edge tab" />
+    <img data-hf-id="hf-4vll" id="w-rail-mac" class="w-rail" src="assets/ui/rail-mac.png" alt="" />
+    <img data-hf-id="hf-pgb7" id="w-rail-ses" class="w-rail" src="assets/ui/rail-sessions.png" alt="" />
+    <img data-hf-id="hf-c3m1" id="w-rail-ai" class="w-rail" src="assets/ui/rail-ai.png" alt="" />
+    <div data-hf-id="hf-imot" id="w-shadow"></div>
+    <div data-hf-id="hf-jzwr" id="w-card">
+      <div data-hf-id="hf-m0bp" id="w-card-bg"></div>
+      <img data-hf-id="hf-t936" id="w-c-mac" src="assets/ui/card-mac.png" alt="This Mac card" />
+      <img data-hf-id="hf-fna8" id="w-c-ses" src="assets/ui/card-sessions.png" alt="Active sessions card" />
+      <img data-hf-id="hf-n1t8" id="w-c-ai" src="assets/ui/card-ai.png" alt="AI usage card" />
+    </div>
+    <img data-hf-id="hf-0vp9" id="w-alert" src="assets/ui/tab-alert.png" alt="Alert bubble: Refactor upload needs approval" />
+
+    <div data-hf-id="hf-14fc" id="w-capA" class="w-cap clip" data-start="0" data-duration="2.75" data-track-index="5">
+      <p data-hf-id="hf-qi69" class="cap">
+        <span data-hf-id="hf-zvnk" class="w">Hotch</span> <span data-hf-id="hf-hxyj" class="w">lives</span> <span data-hf-id="hf-mx6p" class="w">on</span>
+        <span data-hf-id="hf-9o0j" class="w">the</span> <span data-hf-id="hf-k47h" class="w">edge</span><br data-hf-id="hf-x5px" /><span data-hf-id="hf-q3mx" class="w">of</span>
+        <span data-hf-id="hf-kxir" class="w">your</span> <span data-hf-id="hf-qpae" class="w">screen.</span>
+      </p>
+    </div>
+    <div data-hf-id="hf-fyeg" id="w-capB" class="w-cap clip" data-start="2.55" data-duration="2.25" data-track-index="5">
+      <p data-hf-id="hf-fop6" class="cap">Hover a ring to open<br data-hf-id="hf-rsrt" />its section.</p>
+    </div>
+    <div data-hf-id="hf-03ij" id="w-capC" class="w-cap clip" data-start="4.9" data-duration="2.75" data-track-index="5">
+      <p data-hf-id="hf-lpqt" class="cap">
+        <span data-hf-id="hf-6r6s" class="w">Switch</span> <span data-hf-id="hf-odsk" class="w">sections</span><br data-hf-id="hf-szow" /><span data-hf-id="hf-jgko" class="w">from</span>
+        <span data-hf-id="hf-cto3" class="w">the</span> <span data-hf-id="hf-036y" class="w">rail.</span>
+      </p>
+    </div>
+    <div data-hf-id="hf-47si" id="w-capD" class="w-cap clip" data-start="8.15" data-duration="2.05" data-track-index="5">
+      <p data-hf-id="hf-mwnw" class="cap">
+        <span data-hf-id="hf-ywhr" class="w">Alerts</span> <span data-hf-id="hf-hrer" class="w">grow</span> <span data-hf-id="hf-zsf0" class="w">out</span>
+        <span data-hf-id="hf-jh7h" class="w">of</span> <span data-hf-id="hf-cfd2" class="w">the</span> <span data-hf-id="hf-ac0b" class="w">tab.</span>
+      </p>
+    </div>
+    <div data-hf-id="hf-n21y" id="w-capE" class="w-cap clip" data-start="10.1" data-duration="2.6" data-track-index="5">
+      <p data-hf-id="hf-7kaf" class="cap">Click it to jump<br data-hf-id="hf-sldv" />to that session.</p>
+    </div>
+
+    <div data-hf-id="hf-2t53" id="w-cursor">
+      <svg data-hf-id="hf-o8ss" id="w-cursor-svg" viewBox="0 0 24 36" aria-hidden="true">
+        <path data-hf-id="hf-zq9n"
+          d="M2 2 L2 28 L8.5 22 L13 32.5 L17 30.8 L12.6 20.6 L21 20.6 Z"
+          fill="#111"
+          stroke="#fff"
+          stroke-width="2"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const clip = (top, bottom, left) => `inset(${top}px 0px ${bottom}px ${left}px round 36px)`;
+      const closed = clip(470, 430, 640);
+      const mac = clip(139, 99, 0);
+      const ses = clip(280, 240, 0);
+      const ai = clip(256, 216, 0);
+
+      // Cursor parked off-frame until it enters.
+      tl.set("#w-cursor", { x: 900, y: 1160 }, 0);
+
+      // A: per word.
+      tl.fromTo("#w-capA .w", { opacity: 0, filter: "blur(6px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.13, stagger: 0.067, ease: "power2.out" }, 0.15);
+      tl.to("#w-capA .cap", { opacity: 0, filter: "blur(8px)", duration: 0.18, ease: "power3.in" }, 2.5);
+
+      // The cursor comes in and rests on the memory ring.
+      tl.to("#w-cursor", { x: 1866, y: 416, duration: 0.8, ease: "power2.inOut" }, 1.1);
+
+      // Hover intent, then the card widens out of the rail on This Mac.
+      tl.to("#w-tab", { opacity: 0, duration: 0.14, ease: "power2.out" }, 2.0);
+      tl.fromTo("#w-rail-mac", { opacity: 0, scaleY: 0.86 },
+        { opacity: 1, scaleY: 1, duration: 0.32, ease: "expo.out" }, 2.0);
+      tl.fromTo("#w-card", { opacity: 0, clipPath: closed },
+        { opacity: 1, clipPath: mac, duration: 0.44, ease: "expo.out" }, 2.04);
+      tl.fromTo("#w-c-mac", { x: 40, filter: "blur(8px)" },
+        { x: 0, filter: "blur(0px)", duration: 0.42, ease: "expo.out" }, 2.04);
+      tl.fromTo("#w-shadow", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 2.12);
+
+      // B: the whole line.
+      tl.fromTo("#w-capB .cap", { opacity: 0, filter: "blur(8px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, 2.6);
+      tl.to("#w-capB .cap", { opacity: 0, filter: "blur(8px)", duration: 0.16, ease: "power3.in" }, 4.6);
+
+      // Sessions.
+      const press = (t) => {
+        tl.to("#w-cursor-svg", { scale: 0.86, transformOrigin: "8% 6%", duration: 0.06, ease: "power2.in" }, t);
+        tl.to("#w-cursor-svg", { scale: 1, duration: 0.1, ease: "power2.out" }, t + 0.06);
+      };
+      const swap = (t, fromRail, toRail, fromCard, toCard, toClip, toScale) => {
+        tl.to(fromRail, { opacity: 0, duration: 0.12, ease: "power2.out" }, t);
+        tl.to(toRail, { opacity: 1, duration: 0.12, ease: "power2.out" }, t);
+        tl.to("#w-card", { clipPath: toClip, duration: 0.42, ease: "expo.out" }, t);
+        tl.to("#w-shadow", { scaleY: toScale, duration: 0.42, ease: "expo.out" }, t);
+        tl.to(fromCard, { opacity: 0, filter: "blur(4px)", duration: 0.1, ease: "power2.in" }, t);
+        tl.fromTo(toCard, { opacity: 0, y: 6, filter: "blur(4px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.18, ease: "power2.out" }, t + 0.04);
+      };
+      tl.to("#w-cursor", { x: 1874, y: 528, duration: 0.4, ease: "power2.inOut" }, 4.5);
+      press(4.95);
+      swap(4.98, "#w-rail-mac", "#w-rail-ses", "#w-c-mac", "#w-c-ses", ses, 560 / 842);
+
+      // C: per word, grey to ink.
+      tl.fromTo("#w-capC .cap", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 5.0);
+      tl.fromTo("#w-capC .w", { color: "rgba(244,242,250,0.22)" },
+        { color: "#f4f2fa", duration: 0.2, stagger: 0.09, ease: "power1.out" }, 5.0);
+      tl.to("#w-capC .cap", { opacity: 0, filter: "blur(8px)", duration: 0.16, ease: "power3.in" }, 7.45);
+
+      // AI usage.
+      tl.to("#w-cursor", { x: 1874, y: 462, duration: 0.4, ease: "power2.inOut" }, 6.0);
+      press(6.45);
+      swap(6.48, "#w-rail-ses", "#w-rail-ai", "#w-c-ses", "#w-c-ai", ai, 608 / 842);
+
+      // The pointer leaves; the card closes back into the tab.
+      tl.to("#w-cursor", { x: 1380, y: 760, duration: 0.5, ease: "power2.inOut" }, 7.6);
+      tl.to("#w-card", { opacity: 0, clipPath: closed, duration: 0.24, ease: "power3.in" }, 7.75);
+      tl.to("#w-shadow", { opacity: 0, duration: 0.18, ease: "power2.in" }, 7.75);
+      tl.to("#w-rail-ai", { opacity: 0, scaleY: 0.9, duration: 0.18, ease: "power3.in" }, 7.8);
+      tl.to("#w-tab", { opacity: 1, duration: 0.2, ease: "power2.out" }, 7.86);
+
+      // The alert grows out of the tab.
+      tl.set("#w-alert", { opacity: 1 }, 8.2);
+      tl.fromTo("#w-alert", { clipPath: "inset(0px 0px 0px 85.3%)" },
+        { clipPath: "inset(0px 0px 0px 0%)", duration: 0.46, ease: "expo.out" }, 8.2);
+
+      // D: per word.
+      tl.fromTo("#w-capD .w", { opacity: 0, filter: "blur(6px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.13, stagger: 0.067, ease: "power2.out" }, 8.3);
+      tl.to("#w-capD .cap", { opacity: 0, filter: "blur(8px)", duration: 0.16, ease: "power3.in" }, 9.98);
+
+      // Click the bubble: it retracts and Hotch brings the session's app forward.
+      tl.to("#w-cursor", { x: 1580, y: 650, duration: 0.45, ease: "power2.inOut" }, 9.4);
+      press(9.95);
+      tl.to("#w-alert", { clipPath: "inset(0px 0px 0px 85.3%)", duration: 0.24, ease: "power3.in" }, 10.0);
+      tl.set("#w-alert", { opacity: 0 }, 10.26);
+      tl.to("#w-cursor", { x: 1500, y: 1170, duration: 0.55, ease: "power3.in" }, 11.2);
+
+      // E: the whole line.
+      tl.fromTo("#w-capE .cap", { opacity: 0, filter: "blur(8px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, 10.15);
+      tl.to("#w-capE .cap", { opacity: 0, filter: "blur(8px)", duration: 0.16, ease: "power3.in" }, 12.48);
+
+      // The tab steps off the edge to make room for the other homes.
+      tl.to("#w-tab", { x: 110, duration: 0.32, ease: "power3.in" }, 12.5);
+
+      window.__timelines["walk"] = tl;
+    })();
+  </script>
+</template>
