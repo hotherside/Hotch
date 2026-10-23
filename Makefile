@@ -469,7 +469,11 @@ dmg-window-verify:
 # stored notarytool profile:
 #
 #   xcrun notarytool store-credentials hotch \
-#     --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
+#     --apple-id you@example.com --team-id TEAMID
+#
+# Enter the app-specific password only at notarytool's hidden prompt. Passing
+# --password can leave the secret in shell history, process arguments, or an
+# agent's recorded command. The profile stays in Keychain and is not bundled.
 #
 # After this the DMG opens with a double click on any Mac, with no xattr step and
 # no security warning.

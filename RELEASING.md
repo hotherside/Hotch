@@ -13,7 +13,17 @@ This guide describes a maintainer release from a clean checkout. The release ver
 
 For a local architecture build, run `make app`. For a universal bundle run `make app-universal`; this builds arm64 and x86_64 separately, then joins them with `lipo`.
 
-To make a signed and notarized release, configure a Developer ID Application identity in the macOS login keychain and store a `notarytool` credential profile in that keychain. Keep those credentials private. Then run:
+To make a signed and notarized release, configure a Developer ID Application identity in the macOS login keychain. Store a `notarytool` credential profile in that keychain using an interactive terminal:
+
+```sh
+xcrun notarytool store-credentials hotch --apple-id you@example.com --team-id YOUR_TEAM_ID
+```
+
+Enter your Apple app-specific password only when `notarytool` displays its hidden password prompt. Do not add `--password`, paste the password into an AI chat, or put it in a script or environment file. The prompt keeps it out of the command text and process arguments. An app-specific password is a separate, revocable Apple credential used here to authenticate notarization; Hotch does not use it at runtime. Keep it private even if its label is “Hotch.”
+
+If the password was included in a recorded command, chat, or public file, [revoke that password in your Apple Account](https://support.apple.com/en-us/102654), generate a replacement, and repeat the interactive setup. Revoking this release credential prevents future notarization with it; it does not invalidate existing notarized builds or disconnect Hotch's provider accounts.
+
+Then run:
 
 ```sh
 make signing-status
