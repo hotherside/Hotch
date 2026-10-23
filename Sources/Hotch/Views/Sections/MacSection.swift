@@ -47,6 +47,8 @@ struct MacSection: View {
             busiest
                 .modifier(Rise(active: active, index: 1))
         }
+        .onAppear { system.setDemand(.processes, for: "notch-mac-processes") }
+        .onDisappear { system.setDemand(.idle, for: "notch-mac-processes") }
     }
 
     // MARK: Tiles
@@ -352,8 +354,17 @@ struct MacDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: layout.isPopover ? nil : .infinity, alignment: .top)
             .tile()
 
+            let detailRows = rows
             let list = VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                if kind == .cpu {
+                    Text("Processes · 100% = one core")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(HP.text3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                        .help("Process CPU can exceed 100% when it uses several cores. The Mac CPU chart averages across all cores.")
+                }
+                ForEach(Array(detailRows.enumerated()), id: \.offset) { index, row in
                     HStack(spacing: 10) {
                         HStack(spacing: 6) {
                             Text(row.name).foregroundStyle(HP.text).lineLimit(1)
@@ -372,7 +383,7 @@ struct MacDetailView: View {
                     }
                     .font(.system(size: 12))
                     .frame(height: 36)
-                    if index < rows.count - 1 { Rectangle().fill(HP.stroke).frame(height: 1) }
+                    if index < detailRows.count - 1 { Rectangle().fill(HP.stroke).frame(height: 1) }
                 }
                 Spacer(minLength: 0)
             }

@@ -340,14 +340,17 @@ struct ForecastRing: View {
 
 /// A thin horizontal bar made of segments (memory composition, disk used).
 struct SegmentBar: View {
-    struct Segment: Identifiable { let id = UUID(); let fraction: Double; let color: Color }
+    struct Segment { let fraction: Double; let color: Color }
     let segments: [Segment]
     var height: CGFloat = 6
 
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 1.5) {
-                ForEach(segments) { seg in
+                // Segment positions are stable while their fractions update;
+                // fresh UUIDs rebuilt every bar on each telemetry sample.
+                ForEach(segments.indices, id: \.self) { index in
+                    let seg = segments[index]
                     Rectangle()
                         .fill(seg.color)
                         .frame(width: max(0, geo.size.width * CGFloat(min(1, max(0, seg.fraction))) - 1.5))

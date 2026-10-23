@@ -17,6 +17,8 @@ The app reads provider credentials or local client status from the current user'
 
 System readings are sampled locally. Advanced sensor readings use undocumented Apple interfaces, so changes to those readers need care and real hardware review. Backpack mode crosses a privilege boundary: the app must be properly signed for the helper, the user approves the helper through macOS, and app/helper communication uses XPC. Keep helper behavior narrow and fail safely so normal sleep is restored if the app disappears.
 
+System sampling follows visible demand. Ordinary cards keep their live readings and histories, while process enumeration runs only for the Mac overview and CPU/memory details. Capabilities combine across clients so closing one view cannot disable another view's readings. Process CPU uses 100% for one logical core; whole-Mac CPU averages across all logical cores. Window sizing coalesces intrinsic-size callbacks and avoids repeating resize/shadow work when the measured size is unchanged.
+
 Clipboard history is in-memory, text-only, and optional. Preserve its size limit, lifetime, disable behavior, and concealed/transient marker checks when changing it.
 
 ## Checks

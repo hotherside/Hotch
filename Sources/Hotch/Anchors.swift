@@ -196,6 +196,8 @@ final class CardPanelController {
     func show(origin: UnitPoint, alignment: Alignment, showsTabs: Bool, appButtons: Bool = false,
               placement: @escaping (CGSize) -> CGRect) {
         hideWork?.cancel()
+        shrinkWork?.cancel()
+        shrinkWork = nil
         self.placement = placement
         presence.origin = origin
         presence.alignment = alignment
@@ -208,6 +210,10 @@ final class CardPanelController {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.presence.visible = true
+                // Mounting can measure fresh content before this visibility
+                // turn. Apply that cached size even if its next measurement
+                // is unchanged.
+                self.reposition()
                 self.syncKeyable()
                 // Opened on purpose (shortcut, click): take the keyboard so
                 // Esc closes it, without activating Hotch.
@@ -242,16 +248,23 @@ final class CardPanelController {
     /// Moves the card with its anchor (the rail dragged, the pill moved).
     func reposition() {
         guard presence.visible, let placement else { return }
-        panel.setFrame(placement(contentSize), display: true)
+        let target = placement(contentSize)
+        if target != panel.frame { panel.setFrame(target, display: true) }
     }
 
     private func sizeChanged(_ size: CGSize) {
         guard size.width > 1, size.height > 20, presence.mounted else { return }
         let old = contentSize
+        // Telemetry can invalidate intrinsic size while every target and the
+        // window remain the same size. It must not restart a 60Hz shadow pass
+        // or keep postponing a shrink that is already waiting to settle.
+        guard size != old else { return }
         contentSize = size
         guard presence.visible, let placement else { return }
         let target = placement(size)
         shrinkWork?.cancel()
+        shrinkWork = nil
+        guard target != panel.frame else { return }
         shadow.follow()
         if size.height < old.height - 0.5 {
             // Shrinking: let the content finish animating before the window
@@ -259,7 +272,10 @@ final class CardPanelController {
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, self.presence.visible, let placement = self.placement else { return }
-                    self.panel.setFrame(placement(self.contentSize), display: true)
+                    self.shrinkWork = nil
+                    let target = placement(self.contentSize)
+                    guard target != self.panel.frame else { return }
+                    self.panel.setFrame(target, display: true)
                     self.shadow.follow(for: 0.05)
                 }
             }
@@ -1639,18 +1655,28 @@ final class FloatController {
     /// clipped while it moves, and the view is drawn against that corner.
     private func sizeChanged(_ newSize: CGSize) {
         guard newSize.width > 1, newSize.height > 1, !state.dragging else { return }
+        // A shrink interrupted by dragging may leave a larger covering
+        // window. Repair it afterwards, without restarting a pending shrink.
+        guard newSize != size || (shrinkWork == nil && newSize != panel.frame.size) else { return }
         size = newSize
         shrinkWork?.cancel()
-        shadow.follow()
+        shrinkWork = nil
         let old = panel.frame
+        guard newSize != old.size else { return }
+        shadow.follow()
         let cover = CGSize(width: max(old.width, newSize.width), height: max(old.height, newSize.height))
-        panel.setFrame(place(cover, from: old), display: true)
+        let target = place(cover, from: old)
+        if target != old { panel.setFrame(target, display: true) }
         card.reposition()
         guard cover != newSize else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, !self.state.dragging else { return }
-                self.panel.setFrame(self.place(self.size, from: self.panel.frame), display: true)
+                guard let self else { return }
+                self.shrinkWork = nil
+                guard !self.state.dragging else { return }
+                let target = self.place(self.size, from: self.panel.frame)
+                guard target != self.panel.frame else { return }
+                self.panel.setFrame(target, display: true)
                 self.shadow.follow(for: 0.05)
                 self.card.reposition()
             }
@@ -1766,6 +1792,9 @@ final class FloatController {
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
             panel.animator().setFrame(target, display: true)
         }
+        // A shrink can expire while a drag holds the covering window open.
+        // Recover explicitly: changing dragging alone need not relayout SwiftUI.
+        if shrinkWork == nil && panel.frame.size != size { sizeChanged(size) }
     }
 
     /// The pill or orb shows the message itself for a few seconds.

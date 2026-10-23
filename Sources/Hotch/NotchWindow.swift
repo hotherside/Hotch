@@ -309,13 +309,20 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     /// that Hotch sizes itself can follow it. Needs `.intrinsicContentSize` in
     /// `sizingOptions` (and only that, or the window resizes itself).
     var onIntrinsicSizeChange: ((CGSize) -> Void)?
+    private var intrinsicCallbackScheduled = false
 
     override func invalidateIntrinsicContentSize() {
         super.invalidateIntrinsicContentSize()
-        guard let onIntrinsicSizeChange else { return }
+        // Several observed values can invalidate layout in one update. Report
+        // its settled measurement once, rather than queuing one callback per
+        // invalidation (each used to restart window/shadow work).
+        guard onIntrinsicSizeChange != nil, !intrinsicCallbackScheduled else { return }
+        intrinsicCallbackScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            onIntrinsicSizeChange(self.intrinsicContentSize)
+            let size = self.intrinsicContentSize
+            self.intrinsicCallbackScheduled = false
+            self.onIntrinsicSizeChange?(size)
         }
     }
 

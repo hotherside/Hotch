@@ -79,13 +79,48 @@ struct SystemSamplerConfig: Equatable, Sendable {
     var cpuDetail = false
     /// A `.detail(.network)` client is present: Wi-Fi link every 5 s.
     var networkDetail = false
+    /// A process list is visible in an overview, CPU detail, or memory detail.
+    var processRanking = false
     /// SMC temperatures, fans, power rails and IOReport.
     var advanced = true
+
+    /// Resolve capabilities from all visible clients, not just the winning
+    /// detail. A CPU list in one window still needs processes when another
+    /// window displays network detail, and neither belongs to a generic card.
+    static func resolved(demands: [SystemDemand], advanced: Bool) -> SystemSamplerConfig {
+        var config = SystemSamplerConfig()
+        config.advanced = advanced
+        let order = SystemDetailKind.allCases
+        for demand in demands {
+            if demand.rank > config.demand.rank {
+                config.demand = demand
+            } else if demand.rank == config.demand.rank {
+                if case .processes = demand, case .panel = config.demand {
+                    config.demand = demand
+                } else if case .detail(let kind) = demand,
+                          case .detail(let current) = config.demand,
+                          (order.firstIndex(of: kind) ?? 0) < (order.firstIndex(of: current) ?? 0) {
+                    config.demand = demand
+                }
+            }
+            switch demand {
+            case .processes:
+                config.processRanking = true
+            case .detail(let kind):
+                if kind == .cpu { config.cpuDetail = true }
+                if kind == .network { config.networkDetail = true }
+                if kind == .cpu || kind == .memory { config.processRanking = true }
+            default: break
+            }
+        }
+        config.level = min(config.demand.rank, 2)
+        return config
+    }
 }
 
 struct SystemSamplerOutput: Sendable {
     var snapshot: SystemSnapshot
-    /// Present on ticks where the process ranking was refreshed (every 2 s, panel tier).
+    /// Present every 2 s only while a client displays a process list.
     var processes: ProcessRanking?
     var stats: SystemSamplerStats
 }
@@ -107,7 +142,8 @@ struct SystemSamplerStats: Sendable {
 /// - menuBar: CPU total, memory, network, power basics, thermal state (1 Hz);
 ///   per-core CPU and disk IO as 5 s averages (every 5th tick)
 /// - panel:   + per-core CPU, disk IO, GPU, SMC temps/fans/power rails, battery
-///   watts (1 Hz), processes (every 2 s)
+///   watts (1 Hz)
+/// - visible process lists: process CPU and memory ranking every 2 s
 /// - detail(.cpu): + IOReport cluster clocks (every 5 s)
 /// - slow tier: at start, on panel open if the last run is over 30 s old, then
 ///   every 60 s while panel: disk capacity, battery health and cycles, adapter
@@ -145,7 +181,7 @@ final class SystemSampler: @unchecked Sendable {
     private var lastDisk: DiskReading?
 
     private static let second: UInt64 = 1_000_000_000
-    /// Process ranking cadence in the panel tier (spec: 2-3 s).
+    /// Process ranking cadence while a list is visible.
     static let processInterval: UInt64 = 2 * second
 
     init() {}
@@ -165,7 +201,7 @@ final class SystemSampler: @unchecked Sendable {
         config = new
         guard new.level > 0 else {
             stopTimer()
-            processes.reset()
+            if old.processRanking { processes.reset() }
             frequency?.reset()
             lastFrequency = nil
             frequencyDueNs = .max
@@ -185,7 +221,7 @@ final class SystemSampler: @unchecked Sendable {
             // First start runs the slow tier on the first tick; restarts reuse a
             // recent run (panel only) the same way opening the panel does.
             slowDueNs = (lastSlowNs == 0 || now &- lastSlowNs > 30 * SystemSampler.second) ? now : lastSlowNs + 60 * SystemSampler.second
-            if new.level >= 2 { primePanel(now: now) }
+            if new.processRanking { primeProcesses(now: now) }
             if wantsFrequency { primeFrequency(now: now) }
             wifiDueNs = new.networkDetail ? now : .max
             startTimer(after: 0.5)
@@ -194,10 +230,13 @@ final class SystemSampler: @unchecked Sendable {
 
         var early = false
         if new.level >= 2 && old.level < 2 {
-            primePanel(now: now)
             slowDueNs = now &- lastSlowNs > 30 * SystemSampler.second ? now : lastSlowNs + 60 * SystemSampler.second
             early = true
-        } else if new.level < 2 && old.level >= 2 {
+        }
+        if new.processRanking && !old.processRanking {
+            primeProcesses(now: now)
+            early = true
+        } else if !new.processRanking && old.processRanking {
             processes.reset()
             processDueNs = .max
         }
@@ -220,7 +259,7 @@ final class SystemSampler: @unchecked Sendable {
         if early { reschedule(minimumGap: 0.3) }
     }
 
-    private func primePanel(now: UInt64) {
+    private func primeProcesses(now: UInt64) {
         processes.prime(now: now)
         processDueNs = now + SystemSampler.second * 9 / 10
     }
@@ -322,7 +361,7 @@ final class SystemSampler: @unchecked Sendable {
                                      components: sensorValues?.components ?? [])
 
         var ranking: ProcessRanking?
-        if panel && now + second / 10 >= processDueNs {
+        if panel && cfg.processRanking && now + second / 10 >= processDueNs {
             ranking = processes.sample(now: now)
             processDueNs = now + SystemSampler.processInterval
         }

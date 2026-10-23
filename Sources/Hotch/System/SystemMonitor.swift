@@ -53,8 +53,8 @@ final class SystemMonitor: ObservableObject {
     /// Whole-system watts. Panel tier only.
     @Published private(set) var powerHistory: [Double] = SystemMonitor.zeros
 
-    /// Top 6 by CPU and by memory, refreshed every 2 s while demand is panel or
-    /// detail; emptied when demand drops below panel.
+    /// Top 6 by CPU and by memory, refreshed every 2 s while a process list is
+    /// visible; emptied as soon as the last list closes.
     @Published private(set) var topByCPU: [ProcessUsage] = []
     @Published private(set) var topByMemory: [ProcessUsage] = []
 
@@ -130,25 +130,10 @@ final class SystemMonitor: ObservableObject {
     }
 
     private func pushConfig() {
-        var best: SystemDemand = .idle
-        var cpuDetail = false, networkDetail = false
-        let order = SystemDetailKind.allCases
-        for d in demands.values {
-            if d.rank > best.rank {
-                best = d
-            } else if case .detail(let k) = d, case .detail(let b) = best,
-                      (order.firstIndex(of: k) ?? 0) < (order.firstIndex(of: b) ?? 0) {
-                best = d // deterministic pick when several detail views are open
-            }
-            if case .detail(let k) = d {
-                if k == .cpu { cpuDetail = true }
-                if k == .network { networkDetail = true }
-            }
-        }
-        let config = SystemSamplerConfig(demand: best, level: min(best.rank, 2), cpuDetail: cpuDetail,
-                                         networkDetail: networkDetail, advanced: advancedSensors)
+        let config = SystemSamplerConfig.resolved(demands: Array(demands.values), advanced: advancedSensors)
+        let best = config.demand
         if effectiveDemand != best { effectiveDemand = best }
-        if config.level < 2 && !showingDemo {
+        if !config.processRanking && !showingDemo {
             if !topByCPU.isEmpty { topByCPU = [] }
             if !topByMemory.isEmpty { topByMemory = [] }
         }
@@ -191,7 +176,7 @@ final class SystemMonitor: ObservableObject {
         latest = s
         guard lastConfig.level >= 2 else { return }
         publishHistories()
-        if let p = output.processes {
+        if lastConfig.processRanking, let p = output.processes {
             topByCPU = p.byCPU
             topByMemory = p.byMemory
         }

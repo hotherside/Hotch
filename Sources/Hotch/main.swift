@@ -58,6 +58,9 @@ if npArguments.contains("--check-session-handoff") {
 if npArguments.contains("--check-welcome") {
     MainActor.assumeIsolated { OnboardingCheck.runBlockingAndExit() }
 }
+if npArguments.contains("--check-system-demand") {
+    SystemDemandCheck.runBlockingAndExit()
+}
 if npArguments.contains("--check-focus") {
     MainActor.assumeIsolated {
         FocusCheck.runBlockingAndExit()

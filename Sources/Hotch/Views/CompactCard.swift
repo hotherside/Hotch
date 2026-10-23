@@ -736,6 +736,8 @@ struct CompactMac: View {
                 ThermalsTile(thermal: snap.thermal)
             }
         }
+        .onAppear { system.setDemand(.processes, for: "compact-mac-processes") }
+        .onDisappear { system.setDemand(.idle, for: "compact-mac-processes") }
     }
 
     private func big<C: View>(_ kind: SystemDetailKind, _ label: String, _ value: String, _ unit: String,

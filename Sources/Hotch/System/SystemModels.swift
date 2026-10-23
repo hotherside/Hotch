@@ -22,6 +22,8 @@ enum SystemDemand: Sendable, Hashable {
     case idle
     case menuBar
     case panel
+    /// A visible process list, such as the Mac overview’s Busiest row.
+    case processes
     case detail(SystemDetailKind)
 
     /// 0 idle, 1 menuBar, 2 panel, 3 detail.
@@ -29,7 +31,7 @@ enum SystemDemand: Sendable, Hashable {
         switch self {
         case .idle: return 0
         case .menuBar: return 1
-        case .panel: return 2
+        case .panel, .processes: return 2
         case .detail: return 3
         }
     }

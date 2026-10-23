@@ -588,6 +588,7 @@ check: check-version build
 	"$(BIN)" --check-session-handoff
 	"$(BIN)" --check-welcome
 	"$(BIN)" --check-focus
+	"$(BIN)" --check-system-demand
 	"$(BIN)" --check-notch
 	"$(BIN)" --check-credentials
 	"$(HELPER_BIN)" --self-test
