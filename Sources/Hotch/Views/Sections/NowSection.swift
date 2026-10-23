@@ -12,6 +12,7 @@ struct NowSection: View {
     let active: Bool
     let layout: SectionLayout
     let nav: SectionNav
+    @ObservedObject var backpack: BackpackManager = .shared
 
     @Environment(\.usageDisplayMode) private var mode
 
@@ -27,6 +28,8 @@ struct NowSection: View {
                 .modifier(Rise(active: active, index: 1))
             MacTilesRow(system: system, layout: layout, nav: nav)
                 .modifier(Rise(active: active, index: 2))
+            BackpackDiscoveryRow(backpack: backpack, action: nav.openBackpack)
+                .modifier(Rise(active: active, index: 3))
         }
         .frame(width: layout.width, alignment: .top)
     }

@@ -58,7 +58,8 @@ struct CompactCard: View {
                    },
                    openSettings: onOpenSettings,
                    signInClaude: onSignInClaude,
-                   jump: onJump)
+                   jump: onJump,
+                   openBackpack: { withAnimation(HMotion.section) { pages.backpackCard = true } })
     }
 
     var body: some View {
@@ -109,7 +110,7 @@ struct CompactCard: View {
                 switch pages.page {
                 case .now:
                     CompactNow(store: store, sessionStore: sessionStore, system: system,
-                               history: history, now: now, nav: nav)
+                               history: history, now: now, nav: nav, backpack: backpack)
                 case .ai:
                     CompactAI(store: store, history: history, now: now, nav: nav)
                 case .agents:
@@ -160,10 +161,7 @@ struct CompactCard: View {
                 .foregroundStyle(HP.text3)
                 .lineLimit(1)
             Spacer(minLength: 6)
-            button(backpack.isOn ? "backpack.fill" : "backpack", help: "Backpack mode",
-                   tint: backpack.isOn ? HP.ok : HP.text2, selected: pages.backpackCard) {
-                withAnimation(HMotion.section) { pages.backpackCard.toggle() }
-            }
+            BackpackShortcut(backpack: backpack, selected: pages.backpackCard, action: nav.openBackpack)
             if showsAppButtons {
                 button("arrow.clockwise", help: "Refresh now", action: onRefresh)
             }
@@ -212,6 +210,7 @@ struct CompactNow: View {
     let history: UsageHistoryStore
     let now: Date
     let nav: SectionNav
+    @ObservedObject var backpack: BackpackManager = .shared
 
     private var shown: [ProviderUsage] {
         store.usages
@@ -247,6 +246,7 @@ struct CompactNow: View {
                 .tile(radius: 12)
             }
             CompactMacSummary(system: system, nav: nav)
+            BackpackDiscoveryRow(backpack: backpack, action: nav.openBackpack)
         }
     }
 }

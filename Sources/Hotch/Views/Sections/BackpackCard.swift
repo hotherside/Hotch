@@ -1,5 +1,88 @@
 import SwiftUI
 
+/// A labelled entry to the overview, shared by the compact and native footers.
+/// Opening the overview never starts a session.
+struct BackpackShortcut: View {
+    @ObservedObject var backpack: BackpackManager
+    var selected = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: backpack.isOn ? "backpack.fill" : "backpack")
+                    .font(.system(size: 11, weight: .medium))
+                Text(backpack.isOn ? "Backpack on" : "Backpack")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(backpack.isOn ? HP.ok : HP.text2)
+            .padding(.horizontal, 7)
+            .frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 7)
+                .fill(selected ? HP.tileHover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowButtonStyle())
+        .fixedSize()
+        .help("Open Backpack mode · keep agents working with the lid closed")
+        .accessibilityLabel(backpack.isOn ? "Backpack mode is on" : "Backpack mode")
+        .accessibilityHint("Opens details and setup")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Calm, persistent discovery on Home. Availability is visible before opening
+/// the details, and the entire row is an explicit navigation action.
+struct BackpackDiscoveryRow: View {
+    @ObservedObject var backpack: BackpackManager
+    var action: () -> Void
+
+    private var availability: String {
+        switch backpack.phase {
+        case .on: return "On · ends when agents finish"
+        case .needsApproval: return "Setup needed · helper approval"
+        case .unavailable: return "Currently unavailable · view details"
+        case .ending: return "Ending…"
+        case .off: return backpack.lastError == nil ? "Ready to start" : "Couldn’t start · view details"
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: backpack.isOn ? "backpack.fill" : "backpack")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(backpack.isOn ? HP.ok : HP.text2)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(backpack.isOn ? "Backpack on" : "Backpack mode")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(HP.text)
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(HP.text3)
+                    }
+                    Text("Keep agents working with the lid closed")
+                        .font(.system(size: 11))
+                        .foregroundStyle(HP.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(availability)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(backpack.isOn ? HP.ok : HP.text3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+        }
+        .buttonStyle(TileButtonStyle(radius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens Backpack details and setup")
+    }
+}
+
 /// Backpack mode: close the lid on the go and the agents keep working.
 ///
 /// The card says exactly what it will do and when it stops, because the thing
@@ -59,6 +142,12 @@ struct BackpackCard: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(HP.text2)
                 .fixedSize(horizontal: false, vertical: true)
+            if let error = backpack.lastError, !error.isEmpty {
+                Text(error)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(HP.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

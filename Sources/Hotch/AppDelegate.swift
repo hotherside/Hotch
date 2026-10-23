@@ -75,8 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sessions.scanIfStale(10)
             return sessions.sessions.filter { $0.activity == .working || $0.activity == .shell }.count
         }
-        // The notch panel (`NotchWindowController`) is not built any more:
-        // its hidden windows still re-rendered on every system tick.
+        // AnchorManager builds the native notch surface only when selected.
         settingsWindowController = SettingsWindowController(settings: settings,
                                                             store: store)
         onboardingWindowController = OnboardingWindowController(settings: settings)
@@ -89,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboardingWindowController.onFinish = { [weak self] in
             guard let self else { return }
             // Only an explicit finish reveals the companion, keeping launch quiet.
-            if !self.anchors.card.isShown && self.statusItemController.popoverWindow == nil {
+            if !self.anchors.isShown && self.statusItemController.popoverWindow == nil {
                 self.anchors.toggle()
             }
         }
@@ -121,9 +120,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
         syncMenuBarDemand()
 
-        // Hotch 2.1 lives on the screen edge, as a floating pill or orb, or
-        // in the menu bar only; the notch panel is no longer used. Its code
-        // stays in the tree (`NotchWindowController`), unstarted.
+        // All placements share stores and actions; the native notch keeps its
+        // original panel while the other anchors open the compact card.
         let cardPages = PopoverPageModel()
         let deps = CardDeps(store: store, sessionStore: sessionStore, clipboard: clipboardStore,
                             focus: focusStore, system: system, backpack: backpack, pages: cardPages,
@@ -148,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated {
                 let sample = LiveActivity(icon: .symbol("bell.fill"), leading: "Sample alert", trailing: "from --test-alert",
                                           tint: HP.amber, trailingTint: HP.amber, dot: true, key: key)
-                self?.anchors.present(sample) {}
+                self?.presentActivityPreview(sample)
             }
         }
         statusItemController.onChooseAnchor = { anchor in HotchPrefs.shared.anchor = anchor }
@@ -158,7 +156,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .sink { [weak self] anchor in
                 DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self?.anchors.apply(anchor) }
+                    MainActor.assumeIsolated {
+                        self?.anchors.apply(anchor)
+                        self?.configureAlertPresenter()
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -179,18 +180,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Alerts speak through the anchor: the rail tab or the pill says it.
         liveActivities = LiveActivityController()
-        liveActivities.panelIsOpen = { [weak self] in self?.anchors.card.isShown ?? false }
-        liveActivities.presenter = { [weak self] activity, done in
-            guard let self else { done(); return }
-            self.anchors.present(activity, done: done)
-        }
+        anchors.onNotchActivity = { [weak self] activity in self?.liveActivities.post(activity, cooldown: 0) }
+        liveActivities.panelIsOpen = { [weak self] in self?.anchors.isShown ?? false }
+        configureAlertPresenter()
         liveWatcher = LiveActivityWatcher(controller: liveActivities)
 
         // Horizontal swipes turn the card's and popover's sections. Watching,
         // not taking: neither surface ever swallows a scroll meant for another app.
         swipeMonitor = PageSwipeMonitor()
         swipeMonitor.panelTarget = { [weak self] in self?.anchors.cardFrame }
-        swipeMonitor.onPanelSwipe = { delta in cardPages.change(by: delta) }
+        swipeMonitor.onPanelSwipe = { [weak self] delta in self?.anchors.changePage(by: delta) }
         swipeMonitor.panelContentWindow = { [weak self] in self?.anchors.cardWindow }
         swipeMonitor.popoverWindow = { [weak self] in
             self?.statusItemController.popoverWindow
@@ -241,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let titleTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let watching = self.anchors.card.isShown
+                let watching = self.anchors.isShown
                     || self.statusItemController.popoverWindow != nil
                 self.sessionStore.scanIfStale(watching ? 3 : 15)
                 // A timer that reached its end logs itself even with nothing
@@ -315,6 +314,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func configureAlertPresenter() {
+        guard let liveActivities else { return }
+        if HotchPrefs.shared.anchor == .notch {
+            // A nil presenter is the original native notch-wing animation.
+            liveActivities.presenter = nil
+        } else {
+            liveActivities.presenter = { [weak self] activity, done in
+                guard let self else { done(); return }
+                self.anchors.present(activity, done: done)
+            }
+        }
+    }
+
     private func previewAlert() {
         let sample = LiveActivity(icon: .symbol("checkmark.circle.fill"),
                                   leading: "All done", trailing: "Your companion will let you know",
@@ -324,8 +336,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // open behind Settings, so close it before demonstrating the alert.
         anchors.dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + AnchorMotion.settle) { [weak self] in
-            self?.anchors.present(sample) {}
+            self?.presentActivityPreview(sample)
         }
+    }
+
+    private func presentActivityPreview(_ activity: LiveActivity) {
+        if HotchPrefs.shared.anchor == .notch { liveActivities?.post(activity, cooldown: 0) }
+        else { anchors.present(activity) {} }
     }
 
     private func syncMenuBarDemand() {

@@ -35,7 +35,7 @@ struct HotchMoreSettings: View {
                 .font(.system(size: 12))
                 .toggleStyle(.checkbox)
                 .padding(.top, 8)
-            note("The edge rail keeps six sections in place, with AI, session and memory readouts. Hover to peek; click to keep it open. Drag to move it or right-click to change edges. Floating companions can sit anywhere.")
+            note("The edge rail keeps six sections in place on the left, right or bottom. Hover to peek; click to keep it open. Notch brings back the original top-of-screen view, with a small tab on displays without a notch. Pill and orb can sit anywhere. A running Focus timer stays visible on your companion.")
 
             header("Menu bar").padding(.top, 18)
             Text("Show beside the usage number")
@@ -60,7 +60,7 @@ struct HotchMoreSettings: View {
                 .padding(.top, 8)
                 .disabled(prefs.anchor == .menuBar)
             if prefs.anchor == .menuBar {
-                note("Choose a screen edge, pill or orb to see companion alerts.")
+                note("Choose a screen edge, notch, pill or orb to see companion alerts.")
             }
 
             header("This Mac").padding(.top, 18)

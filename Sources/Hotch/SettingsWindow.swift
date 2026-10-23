@@ -275,6 +275,22 @@ struct SettingsView: View {
 
     private var column: some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                HotchBadge(size: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Hotch")
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    Text("A quiet companion for your Mac")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(HotchAbout.version)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.bottom, 22)
+
             sectionHeader("Providers")
 
             VStack(spacing: 0) {

@@ -29,14 +29,15 @@ final class HotchPrefs: ObservableObject {
         }
     }
 
-    /// Where Hotch lives. The notch is no longer offered: Hotch 2.1 is not
-    /// tied to one piece of hardware.
+    /// Where Hotch lives. Notch also works at the top centre of displays
+    /// without a physical cutout.
     enum Anchor: String, CaseIterable, Identifiable {
-        case edge, pill, orb, menuBar
+        case edge, notch, pill, orb, menuBar
         var id: String { rawValue }
         var label: String {
             switch self {
             case .edge: return "Screen edge"
+            case .notch: return "Notch"
             case .pill: return "Floating pill"
             case .orb: return "Floating orb"
             case .menuBar: return "Menu bar only"

@@ -130,6 +130,7 @@ struct OnboardingView: View {
             feature("sparkle", "Keep your agents in sight", "See sessions and plan usage without leaving your work.")
             feature("timer", "Protect a little focus", "Start a timer, check your Mac and get back to what matters.")
             feature("bell.badge", "A gentle nudge", "Short alerts tell you when an agent needs you or finishes.")
+            feature("backpack", "Take your agents with you", "Find Backpack in the Now view to learn about keeping agents working with the lid closed.")
             Divider()
             HStack(spacing: 8) {
                 Image(systemName: "cursorarrow.motionlines")
@@ -256,6 +257,7 @@ struct OnboardingView: View {
     private func symbol(for anchor: HotchPrefs.Anchor) -> String {
         switch anchor {
         case .edge: return "sidebar.right"
+        case .notch: return "macbook"
         case .pill: return "capsule"
         case .orb: return "circle"
         case .menuBar: return "menubar.rectangle"

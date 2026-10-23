@@ -117,32 +117,33 @@ enum LengthMemory: Equatable, Sendable {
 enum StartDecision: Equatable, Sendable {
     case start(minutes: Int?)
     /// Nothing is selected, or Custom holds something that is not a length.
-    /// Return in the task field lands here on a genuinely fresh install, and
-    /// refusing is the whole point: the alternative is choosing a length on
-    /// somebody's behalf on the one run where they have given us nothing to go
-    /// on.
     case refuse
+}
+
+/// The visible setup, shared by the card and the expanded notch page. Task
+/// names never change these choices. Historical task memory remains readable
+/// for compatibility with existing logs, but does not select a mode or length.
+struct FocusSetup: Equatable, Sendable {
+    enum Mode: String, CaseIterable, Sendable {
+        case timer = "Timer"
+        case stopwatch = "Stopwatch"
+    }
+
+    static let durations = [15, 25, 50]
+    var mode: Mode = .timer
+    var duration: LengthChoice = .minutes(25)
+    var customText = "25"
+
+    var decision: StartDecision {
+        mode == .stopwatch ? .start(minutes: nil)
+            : FocusStore.decide(length: duration, custom: customText)
+    }
 }
 
 // MARK: - What this Mac remembers about a task
 
-/// The last decision made about each task name, and the last one made at all.
-///
-/// **This is a memory, not a default.** The distinction is the whole reason the
-/// type exists. The page used to hard-code `length = .openEnded` in both
-/// surfaces' view state, so "Until I stop" was pre-selected on every launch and
-/// re-selected every time the view rebuilt — a choice made *for* the user,
-/// forever, in the one place the page asks them a question. The original
-/// reasoning (open-ended is the honest state of most work) justified it being
-/// *available without a second click*, not it being *chosen on their behalf*;
-/// and it grew teeth once entries reached somebody's timesheet, because an
-/// unnoticed open-ended run banks up to the four-hour cap and syncs it.
-///
-/// A remembered choice differs from a default in three ways that matter here:
-/// it was made by the user, it is theirs per task ("FRNSW DEV" is always 30m),
-/// and on a fresh install there is nothing to show — so nothing is selected and
-/// Start waits. One explicit choice, once ever; after that the global fallback
-/// always has an answer and the empty state is unreachable again.
+/// Historical lengths retained in the on-disk format for compatibility.
+/// The visible setup uses `FocusSetup`; typing a task never applies a habit.
 struct FocusMemory: Sendable, Equatable {
     /// One task name and what was decided about it.
     struct Habit: Sendable, Equatable {
@@ -209,46 +210,9 @@ struct FocusMemory: Sendable, Equatable {
 
 // MARK: - Store
 
-/// A timer you point at a task, and a log of the focus time it measured.
-///
-/// **One question, not two modes.** This used to ask you to pick "count down"
-/// or "count up" before anything else, which are words about the mechanism
-/// rather than the work. Now there is a task and a length, in that order — the
-/// same sentence people already say to themselves: *inbox, for 30 minutes*, or
-/// *inbox, until I stop*. A run with no length is the second half of that
-/// sentence, not a separate mode with a separate name.
-///
-/// **The length is remembered, never decided for you.** See `FocusMemory`: the
-/// selection is the user's own last decision, per task and then globally, and on
-/// a fresh install nothing is selected at all.
-///
-/// **The entry exists from the moment you start it.** Start writes the line; it
-/// sits at the top of today's list, ticking, and is *finished in place* when the
-/// run ends. That is why the stop button says "Stop" rather than "Stop & log" —
-/// there is nothing left for the verb to promise — why the day's total is true
-/// while a run is going, and why a hard kill now costs at most one write
-/// cadence instead of the whole run. The rejected alternative was to keep
-/// creating the line at stop and merely *draw* a pretend row for the run in
-/// progress, which is the same UI with none of the durability and two sources of
-/// truth for one number.
-///
-/// **Pause and resume exist, and they are the same mechanism.** A run carries
-/// `banked` time from earlier segments plus a live segment; pausing closes the
-/// segment, resuming opens a new one. Resuming a *finished* task pulls its entry
-/// back out of the log and into `banked`, so the clock continues exactly where
-/// it stopped — down toward the same target or up from the same total — and
-/// stopping again finishes one combined line rather than fragments. The earlier
-/// "no pause" rule mistook a modelling convenience for a principle; interrupted
-/// is the normal state of work.
-///
-/// Still deliberately simple in ways that are choices, not omissions:
-///
-/// - **No notification.** Notifications need a permission prompt, and Hotch
-///   prompts for nothing. The timer lives on the focus page and in the menu
-///   bar; when it ends, the time logs itself and the readout returns to idle.
-/// - **The log is one day deep.** "What did I do this week" is a journal.
-///   This answers "have I actually put time in today", which is the question
-///   with a glanceable answer.
+/// A timer or stopwatch with a durable daily log. Runs bank active time across
+/// pauses and manual resumes. Relaunching restores interrupted work as finished
+/// entries so no clock starts without an explicit action.
 @MainActor
 final class FocusStore: ObservableObject {
     /// Lengths offered as one-tap pills, in minutes.
@@ -323,8 +287,7 @@ final class FocusStore: ObservableObject {
     /// is one. `finishedEntries` is the other half of the pair for the surfaces
     /// that only want closed runs.
     @Published private(set) var todayEntries: [FocusEntry] = []
-    /// What each task name was last started as. Published because the length
-    /// row reads it as the user types.
+    /// Legacy task-length memory kept compatible with existing focus logs.
     @Published private(set) var memory = FocusMemory()
     /// What is being typed into "What are you working on?".
     ///
@@ -333,6 +296,7 @@ final class FocusStore: ObservableObject {
     /// it — a half-typed task name kept in view state would evaporate on the
     /// way to the keyboard.
     @Published var draftTitle: String = ""
+    @Published var setup = FocusSetup()
 
     /// Where the log and the memory are kept.
     ///

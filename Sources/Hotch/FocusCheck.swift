@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// `--check-focus`: exercises the timer's log against the store, in memory.
 ///
@@ -9,11 +10,8 @@ import Foundation
 /// explanation. Snapshots verify what a page *looks* like; this verifies that
 /// pressing the button puts a line in the log.
 ///
-/// It has since grown the two questions the redesign turned on, for the same
-/// reason: neither has any pixels. That the line exists from the moment the run
-/// *starts* — and is finished in place rather than added a second time — and
-/// that the length offered is one this Mac was told, with nothing offered at all
-/// on a store that has never been told anything.
+/// Covers live logging, pause/resume, interrupted persistence, explicit setup,
+/// and clock updates consumed by the persistent anchor readouts.
 ///
 /// Runs against a throwaway store with an injected clock, so it neither reads
 /// nor writes the real focus log. The one scenario that needs a real file uses
@@ -34,6 +32,72 @@ enum FocusCheck {
         }
 
         let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+        print("explicit timer and stopwatch setup")
+        do {
+            let focus = FocusStore(persists: false)
+            check("a fresh setup visibly offers a 25 minute timer",
+                  focus.setup.mode == .timer && focus.setup.decision == .start(minutes: 25))
+            focus.draftTitle = "A task that used to be a stopwatch"
+            focus.start(minutes: nil, now: start)
+            focus.stop(now: start.addingTimeInterval(10))
+            focus.draftTitle = "A task that used to be a stopwatch"
+            check("typing a remembered name cannot switch the setup",
+                  focus.setup.mode == .timer && focus.setup.decision == .start(minutes: 25))
+            focus.setup.duration = .custom
+            focus.setup.customText = "0"
+            check("an invalid timer duration prevents starting", focus.setup.decision == .refuse)
+            focus.setup.mode = .stopwatch
+            check("stopwatch needs no duration", focus.setup.decision == .start(minutes: nil))
+            focus.setup.mode = .timer
+            check("switching back keeps the unfinished timer input",
+                  focus.setup.customText == "0" && focus.setup.decision == .refuse)
+            focus.setup.customText = "90"
+            check("a custom timer uses the entered minutes", focus.setup.decision == .start(minutes: 90))
+        }
+
+        print("live anchors receive clock updates")
+        do {
+            let focus = FocusStore(persists: false)
+            focus.start(minutes: 25, now: start)
+            var changes = 0
+            let observation = focus.objectWillChange.sink { changes += 1 }
+            focus.tick(now: start.addingTimeInterval(1))
+            check("an active tick publishes once", changes == 1, "got \(changes)")
+            changes = 0
+            focus.tick(now: start.addingTimeInterval(1))
+            check("a repeated instant does not publish", changes == 0)
+            focus.pause(now: start.addingTimeInterval(2))
+            check("pausing publishes a state change", changes > 0)
+            changes = 0
+            focus.tick(now: start.addingTimeInterval(100))
+            check("paused time does not publish ticking updates", changes == 0)
+            focus.resumeRun(now: start.addingTimeInterval(100))
+            check("resuming publishes a state change", changes > 0)
+            changes = 0
+            focus.tick(now: start.addingTimeInterval(101))
+            check("resumed time publishes once again", changes == 1, "got \(changes)")
+            withExtendedLifetime(observation) {}
+        }
+
+        print("clock direction is readable at boundaries")
+        do {
+            check("a countdown keeps its final second visible",
+                  FocusDisplay.clock(0.1, countdown: true) == "0:01")
+            check("a stopwatch counts complete seconds", FocusDisplay.clock(59.9) == "0:59")
+            check("an hour carries an unambiguous hour column", FocusDisplay.clock(3600) == "1:00:00")
+            let focus = FocusStore(persists: false)
+            focus.start(minutes: 25, now: start)
+            focus.pause(now: start.addingTimeInterval(60))
+            check("a paused timer still labels the remaining time",
+                  FocusDisplay.status(focus, now: start.addingTimeInterval(500)) == "Paused · remaining")
+            check("a timer uses Finish", FocusDisplay.endTitle(focus) == "Finish")
+            focus.stop(now: start.addingTimeInterval(500))
+            focus.start(minutes: nil, now: start.addingTimeInterval(600))
+            check("a stopwatch labels elapsed time",
+                  FocusDisplay.readout(focus, now: start.addingTimeInterval(610))?.caption == "elapsed")
+            check("a stopwatch uses Stop", FocusDisplay.endTitle(focus) == "Stop")
+        }
 
         // The reported bug, exactly: start it, stop it seconds later, look for
         // the line.

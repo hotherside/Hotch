@@ -163,7 +163,10 @@ struct PanelChromeView: View {
     @ViewBuilder
     private var leftWing: some View {
         HStack(spacing: 6) {
-            if let needing = sessionStore.sessions.first(where: { $0.activity == .needsInput }) {
+            if focus.isRunning, let time = AnchorFocusClock.readout(focus, now: now) {
+                Image(systemName: focus.isPaused ? "pause.fill" : "timer").foregroundStyle(focus.isPaused ? HP.amber : HP.text2)
+                Text("\(time.value) \(time.caption)").foregroundStyle(HP.text).monospacedDigit()
+            } else if let needing = sessionStore.sessions.first(where: { $0.activity == .needsInput }) {
                 Circle().fill(HP.amber).frame(width: 6, height: 6)
                     .shadow(color: HP.amber.opacity(0.8), radius: 3)
                 Text(needing.name).foregroundStyle(HP.text).lineLimit(1)
@@ -171,9 +174,6 @@ struct PanelChromeView: View {
             } else if backpack.isOn {
                 Image(systemName: "backpack.fill").foregroundStyle(HP.ok)
                 Text("Backpack on").foregroundStyle(HP.text)
-            } else if focus.isRunning, let left = FocusDisplay.menuTitle(focus, now: now) {
-                Image(systemName: "timer").foregroundStyle(HP.text2)
-                Text(left).foregroundStyle(HP.text).monospacedDigit()
             } else {
                 Text(model.page.wingTitle.uppercased())
                     .tracking(1.2)
@@ -238,7 +238,8 @@ struct PanelPagesView: View {
         SectionNav(go: { page in actions.setPage(page) },
                    openDetail: { kind in actions.setDetail(kind) },
                    openSettings: { actions.openSettings() },
-                   signInClaude: { actions.signInClaude() })
+                   signInClaude: { actions.signInClaude() },
+                   openBackpack: { if !model.backpackCard { actions.toggleBackpackCard() } })
     }
 
     var body: some View {
@@ -306,7 +307,7 @@ struct PanelPagesView: View {
         switch page {
         case .now:
             NowSection(store: store, sessionStore: sessionStore, system: system, history: history,
-                       now: now, active: model.expanded, layout: layout, nav: nav)
+                       now: now, active: model.expanded, layout: layout, nav: nav, backpack: backpack)
                 .padding(.top, 4)
         case .ai:
             scroll {
@@ -363,9 +364,8 @@ struct PanelPagesView: View {
                 .lineLimit(1)
                 .contentTransition(.identity)
             Spacer(minLength: 8)
-            footerButton(backpack.isOn ? "backpack.fill" : "backpack",
-                         tint: backpack.isOn ? HP.ok : HP.text2,
-                         help: "Backpack mode", action: actions.toggleBackpackCard)
+            BackpackShortcut(backpack: backpack, selected: model.backpackCard,
+                             action: actions.toggleBackpackCard)
             footerButton("gearshape.fill", tint: HP.text2, help: "Hotch Settings", action: actions.openSettings)
         }
         .padding(.leading, NotchTheme.contentInset)
@@ -452,20 +452,22 @@ struct NotchPanelContent: View {
 // MARK: - Live roots
 
 struct NotchChromeRootView: View {
-    @ObservedObject var store: UsageStore
-    @ObservedObject var sessionStore: SessionStore
-    @ObservedObject var focus: FocusStore
+    let store: UsageStore
+    let sessionStore: SessionStore
+    let focus: FocusStore
     @ObservedObject var model: PanelModel
-    @ObservedObject var system: SystemMonitor
-    @ObservedObject var backpack: BackpackManager
+    let system: SystemMonitor
+    let backpack: BackpackManager
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        // One-second clock while open; nearly stopped while the windows are
-        // ordered out, so a closed panel costs nothing to keep current.
-        TimelineView(.periodic(from: .now, by: model.expanded ? 1 : 60)) { context in
-            PanelChromeView(store: store, sessionStore: sessionStore, focus: focus, model: model,
-                            system: system, backpack: backpack, now: context.date)
+        Group {
+            if model.mounted {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    PanelChromeView(store: store, sessionStore: sessionStore, focus: focus, model: model,
+                                    system: system, backpack: backpack, now: context.date)
+                }
+            } else { Color.clear }
         }
         .environment(\.usageDisplayMode, settings.displayMode)
         .frame(width: model.panelWidth, height: model.windowHeight, alignment: .top)
@@ -473,23 +475,25 @@ struct NotchChromeRootView: View {
 }
 
 struct NotchPagesRootView: View {
-    @ObservedObject var store: UsageStore
-    @ObservedObject var sessionStore: SessionStore
-    @ObservedObject var clipboard: ClipboardStore
-    @ObservedObject var focus: FocusStore
+    let store: UsageStore
+    let sessionStore: SessionStore
+    let clipboard: ClipboardStore
+    let focus: FocusStore
     @ObservedObject var model: PanelModel
     @ObservedObject var actions: PanelActions
-    @ObservedObject var system: SystemMonitor
-    @ObservedObject var backpack: BackpackManager
+    let system: SystemMonitor
+    let backpack: BackpackManager
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        // One-second clock while open; nearly stopped while the windows are
-        // ordered out, so a closed panel costs nothing to keep current.
-        TimelineView(.periodic(from: .now, by: model.expanded ? 1 : 60)) { context in
-            PanelPagesView(store: store, sessionStore: sessionStore, clipboard: clipboard,
-                           focus: focus, model: model, actions: actions, system: system,
-                           backpack: backpack, now: context.date)
+        Group {
+            if model.mounted {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    PanelPagesView(store: store, sessionStore: sessionStore, clipboard: clipboard,
+                                   focus: focus, model: model, actions: actions, system: system,
+                                   backpack: backpack, now: context.date)
+                }
+            } else { Color.clear }
         }
         .environment(\.usageDisplayMode, settings.displayMode)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

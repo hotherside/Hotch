@@ -348,7 +348,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // unnamed unless a name is already sitting in the field.
             let start = NSMenuItem(title: "Start Focus Timer", action: nil, keyEquivalent: "")
             let submenu = NSMenu()
-            for minutes in FocusStore.lengthChoices {
+            for minutes in FocusSetup.durations {
                 let item = NSMenuItem(title: "\(minutes) minutes",
                                       action: #selector(startTimer(_:)), keyEquivalent: "")
                 item.target = self
@@ -356,7 +356,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 submenu.addItem(item)
             }
             submenu.addItem(.separator())
-            let openEnded = NSMenuItem(title: "Until I Stop",
+            let openEnded = NSMenuItem(title: "Stopwatch",
                                        action: #selector(startOpenEnded), keyEquivalent: "")
             openEnded.target = self
             submenu.addItem(openEnded)
@@ -374,12 +374,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         }
 
-        // Backpack mode, reachable without opening anything: the moment you
-        // want it is the moment you are about to close the lid.
-        let backpackItem = NSMenuItem(title: backpack.isOn ? "End Backpack Mode" : "Start Backpack Mode",
-                                      action: #selector(toggleBackpack), keyEquivalent: "")
+        // Discovery opens the explanation first, including setup or the
+        // reason this Mac cannot use the mode. Activation lives in that card.
+        let backpackItem = NSMenuItem(title: "Backpack Mode…",
+                                      action: #selector(openBackpackOverview), keyEquivalent: "")
         backpackItem.target = self
         menu.addItem(backpackItem)
+        if backpack.isOn {
+            let end = NSMenuItem(title: "End Backpack Mode", action: #selector(endBackpack), keyEquivalent: "")
+            end.target = self
+            menu.addItem(end)
+        }
 
         // Where Hotch lives, switchable in one move.
         let anchorItem = NSMenuItem(title: "Show Hotch As", action: nil, keyEquivalent: "")
@@ -477,12 +482,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         onChooseAnchor?(anchor)
     }
 
-    @objc private func toggleBackpack() {
-        if backpack.isOn {
-            backpack.stop()
-        } else {
-            backpack.start()
+    @objc private func openBackpackOverview() {
+        // Let NSMenu finish tracking before presenting another native window.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.backpack.refresh()
+            self.popoverPages.backpackCard = true
+            if !self.menuCard.isShown { self.togglePopover() }
         }
+    }
+
+    @objc private func endBackpack() {
+        backpack.stop()
     }
 
     @objc private func quit() {

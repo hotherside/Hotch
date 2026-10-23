@@ -7,7 +7,14 @@ Hotch runs on your Mac. Settings and usage history are stored locally. A live us
 - Claude Code exposes plan usage through its local client interface. Hotch starts the installed client in a no-prompt, no-session mode and does not read, copy, or store its sign-in credential.
 - Codex usage and thread metadata come from the local Codex app-server, with local session files used for context details and fallback readings. Hotch does not upload transcripts.
 - System readings use macOS APIs and, when enabled, undocumented hardware sensor interfaces. Process summaries cover processes readable to the current user.
-- Settings and usage history are kept in Hotch's application support data. Optional API keys entered for Grok, Kimi, and DeepSeek are stored locally with restricted file permissions and sent to the matching vendor when requesting account data. Hotch does not manage the vendor's account or rotate credentials owned by another app.
+- Kimi can read the access token maintained by the locally installed Kimi CLI, read-only, to request coding-plan usage from Kimi. Hotch does not copy or rotate that token.
+- Settings and usage history are kept in Hotch's application support data. Optional API keys entered for Grok, Kimi, and DeepSeek are stored as plaintext files with mode `0600` inside a directory restricted to the current user (`0700`), and sent to the matching vendor when requesting account data. These permissions protect against other local users; software running as your user can still read the files. Hotch does not manage the vendor's account or rotate credentials owned by another app.
+
+## Downloaded builds and maintainer credentials
+
+Each person connects their own provider accounts after installing Hotch. The app bundle contains code, its icon, metadata, and the optional helper; it does not include the maintainer's provider accounts or Apple sign-in password.
+
+Signing and notarization happen on the maintainer's Mac. The release tool references a named `notarytool` Keychain profile. The profile and its app-specific password are not copied into the app or disk image. A Developer ID certificate's public identity and Apple team identifier are visible signature metadata and do not allow a recipient to sign code as the maintainer. Someone building a fork must supply their own signing credentials and update the helper's team requirement.
 
 ## Clipboard history
 

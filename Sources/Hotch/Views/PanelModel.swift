@@ -52,12 +52,12 @@ enum PanelPage: Int, CaseIterable, Sendable {
     /// Height of this section's content in the notch panel, between the tab row
     /// and the footer. **A property of the section, never of the data**: five
     /// sessions or six providers scroll inside it rather than stretching the
-    /// panel. Only This Mac is taller, because a grid of six live charts is
-    /// worth the room; switching to and from it is the one time the shape's
-    /// bottom edge moves, and it moves on the same spring as everything else.
+    /// panel. Home also reserves room for Backpack discovery; switching
+    /// sections moves the bottom edge on the same spring as everything else.
     var panelContentHeight: CGFloat {
         switch self {
-        case .now, .ai: return 248
+        case .now: return 336
+        case .ai: return 248
         case .agents: return 262
         case .mac: return 322
         case .focus: return 158
@@ -102,6 +102,8 @@ extension EnvironmentValues {
 /// Presentation state shared between the AppKit panel and the SwiftUI content.
 @MainActor
 final class PanelModel: ObservableObject {
+    /// Hidden notch windows release their live content between openings.
+    @Published var mounted: Bool = false
     @Published var expanded: Bool = false
     @Published var notchWidth: CGFloat = NotchGeometryResolver.virtualNotchWidth
     @Published var notchHeight: CGFloat = 32
@@ -522,7 +524,7 @@ enum NotchTheme {
 
     /// Below this the reserved top strip is a seam-hider, not a shelf, and the
     /// wings stay empty. Real notch hardware reserves its own height (32pt on a
-    /// 14" MacBook Pro); a screen without one keeps a 12pt token strip.
+    /// 14" MacBook Pro); a screen without one keeps a compact clock strip.
     static let wingMinimumHeight: CGFloat = 24
 
     /// Clipboard rows: a one-line preview and an age, denser than sessions.

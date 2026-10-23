@@ -9,6 +9,8 @@ struct SectionNav {
     var signInClaude: () -> Void = {}
     /// Brings forward the app a session runs in.
     var jump: (AgentSession) -> Void = { _ in }
+    /// Opens the Backpack explanation without activating the mode.
+    var openBackpack: () -> Void = {}
 }
 
 /// Where a section is drawn. The panel is wide and short; the popover is a

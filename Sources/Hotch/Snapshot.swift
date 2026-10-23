@@ -102,6 +102,7 @@ enum Snapshot {
         let backpack = BackpackManager.shared
 
         let model = PanelModel()
+        model.mounted = true
         model.expanded = true
         model.page = page
         model.macDetail = detail
@@ -477,6 +478,8 @@ enum Snapshot {
         system.applyDemo(SystemDemo.make())
         applyDemoFixture(store: store, sessions: sessions, system: system)
         let pages = PopoverPageModel()
+        let focus = FocusStore(persists: false)
+        seedDemoFocus(into: focus)
         let alert = LiveActivity(icon: .brand("codex"), leading: "Refactor upload…", trailing: "needs approval",
                                  tint: .white, trailingTint: HP.amber, dot: true, key: "need-demo")
 
@@ -485,14 +488,14 @@ enum Snapshot {
             state.phase = phase
             state.side = side
             if phase == .alert { state.alert = alert }
-            return RailView(state: state, pages: pages, store: store, sessionStore: sessions, system: system,
+            return RailView(state: state, pages: pages, store: store, sessionStore: sessions, system: system, focus: focus,
                             onSelect: { _ in }, onDrag: { _ in })
         }
         func float(_ style: FloatState.Style, alerting: Bool = false) -> some View {
             let state = FloatState()
             state.style = style
             if alerting { state.alert = alert }
-            return FloatView(state: state, store: store, sessionStore: sessions, system: system,
+            return FloatView(state: state, store: store, sessionStore: sessions, system: system, focus: focus,
                              onSize: { _ in }, onDrag: { _ in }, onTap: {})
         }
         func caption(_ text: String) -> some View {
@@ -599,14 +602,14 @@ enum Snapshot {
             state.phase = phase
             state.side = side
             if phase == .alert { state.alert = alert }
-            return RailView(state: state, pages: pages(page), store: store, sessionStore: sessions, system: system,
+            return RailView(state: state, pages: pages(page), store: store, sessionStore: sessions, system: system, focus: focus,
                             onSelect: { _ in }, onDrag: { _ in })
         }
         func float(_ style: FloatState.Style, alerting: Bool = false) -> some View {
             let state = FloatState()
             state.style = style
             if alerting { state.alert = alert }
-            return FloatView(state: state, store: store, sessionStore: sessions, system: system,
+            return FloatView(state: state, store: store, sessionStore: sessions, system: system, focus: focus,
                              onSize: { _ in }, onDrag: { _ in }, onTap: {})
         }
         func card(_ page: PanelPage, menuBar: Bool = false) -> some View {
@@ -778,7 +781,7 @@ enum Snapshot {
                             y: visible.height - attachment)
             }
             RailView(state: state, pages: fixture.pages, store: fixture.store, sessionStore: fixture.sessions,
-                     system: fixture.system, onSelect: { _ in }, onDrag: { _ in })
+                     system: fixture.system, focus: fixture.focus, onSelect: { _ in }, onDrag: { _ in })
                 .frame(width: RailController.size(for: phase, side: .right).width, height: RailGeometry.height)
                 .offset(x: visible.maxX - RailController.size(for: phase, side: .right).width,
                         y: visible.height - rail.maxY)

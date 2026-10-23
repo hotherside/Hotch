@@ -401,7 +401,7 @@ final class RailController {
         let deps = card.deps
         host = FirstMouseHostingView(rootView: RailView(
             state: state, pages: deps.pages, store: deps.store, sessionStore: deps.sessionStore,
-            system: deps.system,
+            system: deps.system, focus: deps.focus,
             onSelect: { [weak self] page in self?.select(page) },
             onDrag: { [weak self] phase in self?.drag(phase) },
             onHover: { [weak self] page, inside in self?.hover(page, inside) },
@@ -881,6 +881,7 @@ struct RailView: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var sessionStore: SessionStore
     @ObservedObject var system: SystemMonitor
+    var focus: FocusStore? = nil
     let onSelect: (PanelPage) -> Void
     let onDrag: (DragPhase) -> Void
     var onHover: (PanelPage, Bool) -> Void = { _, _ in }
@@ -1177,6 +1178,12 @@ struct RailView: View {
         case .mac: memoryReadout
         case .ai: aiReadout
         case .agents: sessionReadout
+        case .focus:
+            if let focus {
+                AnchorFocusReadout(focus: focus, style: .rail)
+            } else {
+                Image(systemName: page.symbol).font(.system(size: 12, weight: .semibold)).foregroundStyle(HP.text3)
+            }
         default:
             Image(systemName: page.symbol)
                 .font(.system(size: 12, weight: .semibold))
@@ -1194,6 +1201,9 @@ struct RailView: View {
         case .agents:
             let count = sessionStore.sessions.filter { $0.activity <= .shell }.count
             return "\(count) active sessions" + (needsYou ? ", needs attention" : "")
+        case .focus:
+            guard let focus, let time = AnchorFocusClock.readout(focus) else { return "No timer running" }
+            return "\(time.value) \(time.caption)"
         default: return ""
         }
     }
@@ -1540,7 +1550,7 @@ final class FloatController {
         shadow = ShadowFollower(panel)
         let deps = card.deps
         host = FirstMouseHostingView(rootView: FloatView(
-            state: state, store: deps.store, sessionStore: deps.sessionStore, system: deps.system,
+            state: state, store: deps.store, sessionStore: deps.sessionStore, system: deps.system, focus: deps.focus,
             onSize: { _ in },
             onDrag: { [weak self] ended in self?.drag(ended: ended) },
             onTap: { [weak self] in
@@ -1799,6 +1809,7 @@ struct FloatView: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var sessionStore: SessionStore
     @ObservedObject var system: SystemMonitor
+    var focus: FocusStore? = nil
     let onSize: (CGSize) -> Void
     let onDrag: (Bool) -> Void
     let onTap: () -> Void
@@ -1881,6 +1892,9 @@ struct FloatView: View {
                         .foregroundStyle(memory.pressure == .critical ? HP.red : HP.text).monospacedDigit()
                 }
             }
+            if let focus {
+                AnchorFocusReadout(focus: focus, style: .inline)
+            }
         }
         .font(.system(size: 11.5, weight: .semibold))
         .lineLimit(1)
@@ -1899,6 +1913,9 @@ struct FloatView: View {
     private var orb: some View {
         HStack(spacing: 0) {
             if !state.right { orbCore }
+            if let focus {
+                AnchorFocusReadout(focus: focus, style: .inline)
+            }
             if let a = state.alert {
                 message(a)
                     .padding(state.right ? .leading : .trailing, 18)
@@ -2020,11 +2037,16 @@ final class AnchorManager {
     let card: CardPanelController
     private var rail: RailController?
     private var float: FloatController?
+    private var notch: NotchWindowController?
+    private var notchHover: HoverMonitor?
+    private var outsideClickMonitor: Any?
     private let hotKey = HotKey()
     private var escMonitor: Any?
     private let fullscreen = FullscreenWatcher()
     /// With "Menu bar only", the shortcut opens the popover instead.
     var onMenuBarToggle: () -> Void = {}
+    /// Native notch alerts use the original wing presenter owned by the app.
+    var onNotchActivity: (LiveActivity) -> Void = { _ in }
 
     init(deps: CardDeps) {
         card = CardPanelController(deps: deps)
@@ -2036,7 +2058,7 @@ final class AnchorManager {
             guard event.keyCode == UInt16(kVK_Escape) else { return event }
             var handled = false
             MainActor.assumeIsolated {
-                guard let self, self.card.isShown else { return }
+                guard let self, self.isShown else { return }
                 self.dismiss()
                 handled = true
             }
@@ -2049,10 +2071,45 @@ final class AnchorManager {
     func apply(_ anchor: HotchPrefs.Anchor) {
         rail?.stop()
         float?.stop()
+        notchHover?.stop()
+        notch?.stop()
         rail = nil
         float = nil
+        notch = nil
+        notchHover = nil
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        outsideClickMonitor = nil
         current = anchor
         switch anchor {
+        case .notch:
+            let deps = card.deps
+            let n = NotchWindowController(store: deps.store, sessionStore: deps.sessionStore,
+                                         clipboard: deps.clipboard, focus: deps.focus, model: PanelModel(),
+                                         system: deps.system, backpack: deps.backpack)
+            n.onOpenSettings = deps.openSettings
+            n.actions.signInClaude = deps.signInClaude
+            let hover = HoverMonitor()
+            n.onExpandedChange = { [weak hover] expanded in hover?.noteExpanded(expanded) }
+            hover.hotZones = { [weak n] in
+                guard let n else { return nil }
+                return (n.hoverZones, n.panelHoverZone)
+            }
+            hover.onExpand = { [weak n] point in n?.expand(near: point) }
+            hover.onCollapse = { [weak n, weak hover] in
+                n?.collapse()
+                if n?.isExpanded == true { hover?.noteExpanded(true) }
+            }
+            notch = n
+            notchHover = hover
+            hover.start()
+            outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let n = self.notch, n.isExpanded,
+                          !n.panelHoverZone.contains(NSEvent.mouseLocation),
+                          !n.hoverZones.contains(where: { $0.contains(NSEvent.mouseLocation) }) else { return }
+                    self.dismiss()
+                }
+            }
         case .edge:
             let r = RailController(card: card)
             r.start()
@@ -2080,16 +2137,26 @@ final class AnchorManager {
     func refreshPlacement() {
         rail?.refreshPlacement()
         float?.refreshPlacement()
+        if let notch {
+            notch.invalidateHoverZones()
+            let point = notch.geometry.map { CGPoint(x: $0.screenFrame.midX, y: $0.screenFrame.midY) }
+            notch.updatePlacement(near: point)
+        }
         applyFullscreen()
     }
 
     func toggle() {
-        if let rail { rail.toggle() } else if let float { float.toggle() } else { onMenuBarToggle() }
+        if let notch {
+            if notch.isExpanded { dismiss() }
+            else { notch.pinned = true; notch.expand(); notchHover?.noteExpanded(true) }
+        } else if let rail { rail.toggle() } else if let float { float.toggle() } else { onMenuBarToggle() }
     }
 
     func dismiss() {
         rail?.collapse()
         float?.collapse()
+        notch?.collapse(force: true)
+        notchHover?.noteExpanded(false)
     }
 
     /// Brings forward the app a session runs in and puts the card away.
@@ -2125,13 +2192,27 @@ final class AnchorManager {
         pages.page = page
         pages.backpackCard = false
         pages.macDetail = detail
-        if let rail { rail.expand(pinned: true) } else if let float { float.expand(pinned: true) } else { onMenuBarToggle() }
+        if let notch {
+            notch.setPage(page)
+            if let detail { notch.setDetail(detail) }
+            notch.pinned = true
+            notch.expand()
+            notch.focusKeyboardIfPinned()
+            notchHover?.noteExpanded(true)
+        } else if let rail { rail.expand(pinned: true) } else if let float { float.expand(pinned: true) } else { onMenuBarToggle() }
     }
 
     func present(_ activity: LiveActivity, done: @escaping () -> Void) {
-        if let rail { rail.present(activity, done: done) } else if let float { float.present(activity, done: done) } else { done() }
+        if notch != nil {
+            onNotchActivity(activity)
+            done()
+        } else if let rail { rail.present(activity, done: done) } else if let float { float.present(activity, done: done) } else { done() }
     }
 
-    var cardWindow: NSWindow? { card.isShown ? card.panel : nil }
-    var cardFrame: CGRect? { card.isShown ? card.frame : nil }
+    var isShown: Bool { card.isShown || notch?.isExpanded == true }
+    func changePage(by delta: Int) {
+        if let notch { notch.changePage(by: delta) } else { card.deps.pages.change(by: delta) }
+    }
+    var cardWindow: NSWindow? { notch?.contentWindow ?? (card.isShown ? card.panel : nil) }
+    var cardFrame: CGRect? { notch?.isExpanded == true ? notch?.panelFrame : (card.isShown ? card.frame : nil) }
 }

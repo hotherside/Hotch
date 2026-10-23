@@ -92,8 +92,9 @@ enum NotchGeometryResolver {
     static var standardContentHeight: CGFloat {
         PanelMetrics.maxBelowStrip
     }
-    /// Clearance reserved on a screen with no physical notch.
-    static let virtualClearance: CGFloat = 12
+    /// A virtual notch reserves one compact clock row, so running Focus stays
+    /// visible above the tabs even on an external display.
+    static let virtualClearance: CGFloat = 28
     static let virtualNotchWidth: CGFloat = 220
     static let fallbackNotchWidth: CGFloat = 200
     /// How far the panel body extends above the top of the screen.
@@ -160,8 +161,8 @@ enum NotchGeometryResolver {
                            y: frame.maxY - height,
                            width: virtualNotchWidth,
                            height: height)
-        // There is no bezel to match here, so reserve only a token strip and
-        // give the space back to the content.
+        // There is no bezel to match here; reserve a compact top row for the
+        // virtual notch and the persistent Focus clock.
         return assemble(screenFrame: frame, notch: notch, clearance: virtualClearance,
                         contentHeight: contentHeight, isReal: false)
     }
@@ -217,7 +218,7 @@ enum NotchGeometryResolver {
         return geometry(for: preferred, contentHeight: contentHeight)
     }
 
-    private static func assemble(screenFrame: CGRect,
+    static func assemble(screenFrame: CGRect,
                                  notch: CGRect,
                                  clearance: CGFloat,
                                  contentHeight: CGFloat,
@@ -370,6 +371,9 @@ final class NotchWindowController {
     private var shrinkWorkItem: DispatchWorkItem?
     private var cachedHoverZones: [CGRect]?
     private var hoverZone = PanelHoverZone()
+    private var focusBadge: NotchFocusBadgeController!
+    var pinned = false
+    var onExpandedChange: (Bool) -> Void = { _ in }
 
     private static let editingGrace: TimeInterval = 20
     /// How long the section spring takes, for deferring a shrink of the hit
@@ -471,6 +475,14 @@ final class NotchWindowController {
         actions.setPage = { [weak self] page in self?.setPage(page) }
         actions.setDetail = { [weak self] kind in self?.setDetail(kind) }
         actions.toggleBackpackCard = { [weak self] in self?.toggleBackpackCard() }
+        focusBadge = NotchFocusBadgeController(focus: focus)
+        focusBadge.onTap = { [weak self] in
+            guard let self else { return }
+            self.setPage(self.focus.isRunning ? .focus : .now)
+            self.pinned = true
+            self.expand(near: NSEvent.mouseLocation)
+        }
+        if let geometry { focusBadge.place(geometry) }
     }
 
     private func finishEditing() {
@@ -490,10 +502,12 @@ final class NotchWindowController {
     /// `applySectionGeometry`.
     @discardableResult
     func updatePlacement(near point: CGPoint? = nil) -> NotchGeometry? {
+        let target = point ?? geometry.map { CGPoint(x: $0.screenFrame.midX, y: $0.screenFrame.midY) }
         guard let geometry = NotchGeometryResolver.geometry(
-            containing: point,
+            containing: target,
             contentHeight: NotchGeometryResolver.standardContentHeight) else { return nil }
         self.geometry = geometry
+        focusBadge?.place(geometry)
 
         model.apply(geometry)
         panel.setFrame(geometry.panelRect, display: false)
@@ -596,7 +610,7 @@ final class NotchWindowController {
     }
 
     private func syncKeyability() {
-        contentPanel.keyable = model.expanded && model.page == .focus && !model.backpackCard
+        contentPanel.keyable = model.expanded && (pinned || (model.page == .focus && !model.backpackCard))
         if !contentPanel.keyable && contentPanel.isKeyWindow {
             contentPanel.resignKey()
         }
@@ -612,10 +626,13 @@ final class NotchWindowController {
     }
 
     var hoverZones: [CGRect] {
-        if let cachedHoverZones { return cachedHoverZones }
-        let zones = NotchGeometryResolver.geometries().map(\.notchRect)
-        cachedHoverZones = zones
-        return zones
+        let zones: [CGRect]
+        if let cachedHoverZones { zones = cachedHoverZones }
+        else {
+            zones = NotchGeometryResolver.geometries().map(\.notchRect)
+            cachedHoverZones = zones
+        }
+        return zones + [focusBadge?.frame].compactMap { $0 }
     }
 
     func invalidateHoverZones() {
@@ -648,13 +665,17 @@ final class NotchWindowController {
         editingTimeout = nil
         guard !model.expanded else { return }
         updatePlacement(near: point)
+        model.mounted = true
+        focusBadge?.suppressed = true
         panel.orderFrontRegardless()
         contentPanel.orderFrontRegardless()
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 self?.model.expanded = true
+                self?.onExpandedChange(true)
                 self?.syncKeyability()
                 self?.syncSystemDemand()
+                self?.focusKeyboardIfPinned()
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + PanelMotion.shadowSettle) { [weak self] in
@@ -689,13 +710,17 @@ final class NotchWindowController {
         model.revealHint = nil
     }
 
-    func collapse() {
+    func collapse(force: Bool = false) {
         guard model.expanded else { return }
-        if model.editingTask && contentPanel.isKeyWindow {
+        if !force && (pinned || (model.editingTask && contentPanel.isKeyWindow)) {
+            if pinned { return }
             holdOpenForEditing()
             return
         }
         model.expanded = false
+        onExpandedChange(false)
+        pinned = false
+        model.editingTask = false
         contentPanel.keyable = false
         syncSystemDemand()
         collapseWorkItem?.cancel()
@@ -706,6 +731,8 @@ final class NotchWindowController {
                 guard !self.model.expanded else { return }
                 self.panel.orderOut(nil)
                 self.contentPanel.orderOut(nil)
+                self.model.mounted = false
+                self.focusBadge?.suppressed = false
                 // A tile left open is a detour, not a place to come back to:
                 // the next hover opens on the section, not on the detail.
                 self.model.macDetail = nil
@@ -715,6 +742,28 @@ final class NotchWindowController {
         }
         collapseWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + PanelMotion.teardownDelay, execute: work)
+    }
+
+    /// Switching placement tears down every window and pending animation, so a
+    /// delayed collapse cannot re-show the notch badge after another anchor.
+    func stop() {
+        collapseWorkItem?.cancel()
+        editingTimeout?.cancel()
+        revealTimeout?.cancel()
+        shrinkWorkItem?.cancel()
+        pinned = false
+        model.expanded = false
+        model.mounted = false
+        model.editingTask = false
+        contentPanel.keyable = false
+        panel.orderOut(nil)
+        contentPanel.orderOut(nil)
+        focusBadge?.stop()
+        system.setDemand(.idle, for: "panel")
+    }
+
+    func focusKeyboardIfPinned() {
+        if pinned && model.expanded { contentPanel.keyable = true; contentPanel.makeKey() }
     }
 
     private func holdOpenForEditing() {

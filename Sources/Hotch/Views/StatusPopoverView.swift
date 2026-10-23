@@ -117,7 +117,8 @@ struct StatusPopoverContent: View {
                        }
                    },
                    openSettings: onOpenSettings,
-                   signInClaude: onSignInClaude)
+                   signInClaude: onSignInClaude,
+                   openBackpack: { withAnimation(HMotion.section) { pages.backpackCard = true } })
     }
 
     var body: some View {
@@ -162,7 +163,7 @@ struct StatusPopoverContent: View {
                 switch pages.page {
                 case .now:
                     NowSection(store: store, sessionStore: sessionStore, system: system, history: history,
-                               now: now, active: true, layout: layout, nav: nav)
+                               now: now, active: true, layout: layout, nav: nav, backpack: backpack)
                 case .ai:
                     AISection(store: store, history: history, now: now, active: true, layout: layout, nav: nav)
                 case .agents:
@@ -199,8 +200,7 @@ struct StatusPopoverContent: View {
                 .font(.system(size: PopoverTheme.captionSize))
                 .foregroundStyle(HP.text3)
             Spacer(minLength: 6)
-            iconButton(backpack.isOn ? "backpack.fill" : "backpack", help: "Backpack mode",
-                       tint: backpack.isOn ? HP.ok : HP.text2) {
+            BackpackShortcut(backpack: backpack, selected: pages.backpackCard) {
                 withAnimation(HMotion.section) { pages.backpackCard.toggle() }
             }
             iconButton("arrow.clockwise", help: "Refresh now", action: onRefresh)

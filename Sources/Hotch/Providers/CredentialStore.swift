@@ -5,19 +5,18 @@ import Security
 /// a Claude OAuth credential too; that is gone, and `ClaudeCodeBridge` deletes
 /// the old file.)
 ///
-/// Deliberately not the login Keychain. A Keychain ACL is bound to the code
-/// signature of the app that created the item, and Hotch is ad-hoc signed
-/// (`codesign -s -`, because there is no Developer ID involved in a personal
-/// tool). Every rebuild produces a new cdhash, the recorded ACL stops matching,
-/// and macOS asks "Allow / Always Allow" again — for an item Hotch created
-/// itself, so even clicking Always Allow could not make it stick. That is the
-/// prompt users kept seeing after connecting their account.
+/// Development builds adopted file storage because ad-hoc signatures change
+/// with each rebuild. A Keychain ACL is bound to the code signature of the app
+/// that created the item; those rebuilds produced a new cdhash and the recorded
+/// ACL stopped matching. macOS then asked "Allow / Always Allow" again for an
+/// item Hotch itself had created. File storage avoided those recurring prompts.
 ///
-/// A 0600 file inside a 0700 directory has no ACL to invalidate, so one
-/// connection really is one connection. This is also exactly the shape of the
-/// vendor files Hotch already checks for (`~/.codex/auth.json`), so it does not
-/// widen the threat model: any
-/// process running as this user could already read those.
+/// A 0600 file inside a 0700 directory avoids that rebuild-specific prompt and
+/// protects against other unprivileged local users. This is plaintext storage:
+/// software running as the signed-in user can read the keys. It does not provide
+/// the per-application access controls of the Keychain. Release builds support
+/// Developer ID signing, so a future storage migration can revisit Keychain
+/// access with a stable signing identity.
 enum CredentialStore {
     /// `~/Library/Application Support/Hotch`, created 0700 on first write.
     static var directory: URL {
@@ -92,7 +91,18 @@ enum CredentialStore {
 
     @discardableResult
     static func write(_ data: Data, name: String) -> Bool {
+        write(data, name: name, in: directory)
+    }
+
+    /// Explicit directory for the filesystem security check; production callers
+    /// use the overload above. Never accepts a path supplied by a provider.
+    @discardableResult
+    static func write(_ data: Data, name: String, in directory: URL) -> Bool {
         let fm = FileManager.default
+        guard !name.isEmpty, name.utf8.allSatisfy({
+            (65...90).contains($0) || (97...122).contains($0)
+                || (48...57).contains($0) || $0 == 45 || $0 == 95
+        }) else { return false }
         do {
             // 0700 first, so the atomic write below is never briefly readable
             // by another user even before the file mode is tightened.
@@ -101,7 +111,12 @@ enum CredentialStore {
                                        withIntermediateDirectories: true,
                                        attributes: [.posixPermissions: 0o700])
             }
-            let target = url(for: name)
+            let attributes = try fm.attributesOfItem(atPath: directory.path)
+            guard attributes[.type] as? FileAttributeType == .typeDirectory else { return false }
+            // Other stores or an older install may have created this folder
+            // with broader permissions. Tighten it before the atomic write.
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            let target = directory.appendingPathComponent("\(name).json", isDirectory: false)
             try data.write(to: target, options: [.atomic])
             try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
             return true

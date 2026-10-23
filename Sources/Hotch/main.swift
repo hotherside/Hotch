@@ -63,6 +63,12 @@ if npArguments.contains("--check-focus") {
         FocusCheck.runBlockingAndExit()
     }
 }
+if npArguments.contains("--check-notch") {
+    MainActor.assumeIsolated { NotchGeometryCheck.runBlockingAndExit() }
+}
+if npArguments.contains("--check-credentials") {
+    CredentialStoreCheck.runBlockingAndExit()
+}
 if npArguments.contains("--render-icon") {
     IconCLI.runBlockingAndExit(
         directory: npValue(after: "--render-icon", default: "build/AppIcon.iconset")
