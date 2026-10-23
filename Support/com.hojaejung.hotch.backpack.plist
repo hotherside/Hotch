@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.hojaejung.hotch.backpack</string>
+	<!-- Relative to the app bundle; SMAppService resolves it, so no absolute path. -->
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/HotchBackpackHelper</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.hojaejung.hotch.backpack</key>
+		<true/>
+	</dict>
+	<!-- Shows the helper under Hotch's name in System Settings > Login Items. -->
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>com.hojaejung.hotch</string>
+	</array>
+	<!-- Runs once at boot so a SleepDisabled left over from before a reboot is
+	     restored even if Hotch is never opened. Exits after 30 s idle. -->
+	<key>RunAtLoad</key>
+	<true/>
+	<!-- Relaunch only after a crash, so launch recovery restores sleep straight
+	     away. A clean idle exit (status 0) is not relaunched. -->
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+</dict>
+</plist>
