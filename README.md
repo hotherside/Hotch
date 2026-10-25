@@ -60,7 +60,7 @@ The app bundle is created at `build/Hotch.app`. `make run` builds it and launche
 
 ## Connect providers
 
-On first launch, the welcome flow helps you choose placement, detects configured providers, and offers optional clipboard history. You can replay it from Settings. Open Settings from the Hotch menu bar item or card to configure providers. Claude reads plan usage through Claude Code, which must be installed and signed in. Codex reads usage and thread metadata through the Codex app-server; the Codex app/CLI and a signed-in account are needed. Grok, Kimi, and DeepSeek are optional and require the corresponding vendor API key; Grok also needs a team ID. Provider credentials are sent to their respective vendor to request usage or balance data. These requests do not run model inference.
+On first launch, a short welcome letter introduces Hotch. One setup screen then helps you choose placement, detects configured providers, and offers optional clipboard history, and Hotch points to where it now lives when you finish. You can replay the welcome from Settings. Open Settings from the Hotch menu bar item or card to configure providers. Claude reads plan usage through Claude Code, which must be installed and signed in. Codex reads usage and thread metadata through the Codex app-server; the Codex app/CLI and a signed-in account are needed. Grok, Kimi, and DeepSeek are optional and require the corresponding vendor API key; Grok also needs a team ID. Provider credentials are sent to their respective vendor to request usage or balance data. These requests do not run model inference.
 
 Data sources and setup details can change with vendor software and account plans. Check the provider's status in Settings if a row cannot connect.
 

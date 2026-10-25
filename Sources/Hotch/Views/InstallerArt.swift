@@ -112,7 +112,7 @@ enum InstallerArt {
              color: ink,
              at: NSRect(x: 92, y: flip(72), width: 420, height: 32))
 
-        text("Claude, Codex and Gemini usage, in your notch.",
+        text("AI plan usage, agent sessions and your Mac, at a glance.",
              font: .systemFont(ofSize: 12.5, weight: .regular),
              color: inkSoft,
              at: NSRect(x: 92, y: flip(94), width: 460, height: 20))
@@ -171,11 +171,12 @@ enum InstallerArt {
         // dialog was **Move to Bin** — which the first recipient duly clicked,
         // deleting the app instead of installing it. The build is notarized now, so
         // the dialog is gone and the warning would send people looking for a prompt
-        // that never appears. What is left is what someone actually needs.
+        // that never appears. What is left is what someone actually needs, in
+        // the order the welcome now shows it.
         let steps: [(String, String)] = [
-            ("1", "Open **Hotch** from your Applications folder. It opens straight away."),
-            ("2", "Look for the **notch icon in your menu bar** \u{2014} no Dock icon, no window."),
-            ("3", "Settings opens once, to connect an account. **Hover the notch** any time."),
+            ("1", "Open **Hotch** from your Applications folder, not from this window."),
+            ("2", "A short welcome helps you **choose where Hotch lives** on your screen."),
+            ("3", "Then **hover it to peek**. The menu bar icon is always there too."),
         ]
 
         var y = card.maxY - 52

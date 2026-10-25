@@ -234,10 +234,11 @@ dist: app-universal
 	@echo
 	@echo "  Send the zip together with $(DIST_DIR)/READ-ME-FIRST.md."
 	@if [ "$(SIGN_ID)" = "-" ]; then \
-	  echo "  Ad-hoc signed: a recipient needs the xattr step in SHARING.md."; \
+	  echo "  Ad-hoc signed, not notarised: macOS blocks the first open until the"; \
+	  echo "  recipient allows it in System Settings > Privacy & Security."; \
 	else \
-	  echo "  Prefer 'make dmg' for sharing: the disk image window carries the"; \
-	  echo "  Gatekeeper instructions, and a zip has nowhere to put them."; \
+	  echo "  Prefer 'make dmg' for sharing: the disk image window shows where"; \
+	  echo "  to drag Hotch and what happens next, and a zip has nowhere to put that."; \
 	fi
 
 # Drag-to-install disk image. Nicer than the zip, and the right container to
@@ -334,11 +335,12 @@ dmg-only:
 	@$(MAKE) --no-print-directory report-size FILE="$(DMG)" EXTRA="volume \"$(VOL_NAME)\""
 	@echo
 	@if [ "$(SIGN_ID)" = "-" ]; then \
-	  echo "  Ad-hoc signed: recipients still need the xattr step in SHARING.md."; \
-	  echo "  A DMG changes the presentation, not the signature."; \
+	  echo "  Ad-hoc signed, not notarised: macOS blocks the first open until the"; \
+	  echo "  recipient allows it in Privacy & Security. A DMG changes the"; \
+	  echo "  presentation, not the signature."; \
 	else \
-	  echo "  The window explains the one-time Gatekeeper step. To remove that"; \
-	  echo "  step entirely: make notarize NOTARY_PROFILE=<your-notarytool-profile>"; \
+	  echo "  Signed but not yet notarised: macOS still asks before the first open."; \
+	  echo "  To remove that step: make notarize NOTARY_PROFILE=<your-notarytool-profile>"; \
 	fi
 	@echo
 

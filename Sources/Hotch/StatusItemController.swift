@@ -103,6 +103,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuCard.isShown ? menuCard.panel : nil
     }
 
+    /// The menu bar icon on screen, for welcome to point at. Nil when macOS
+    /// has hidden it because the menu bar is full. Occlusion is not asked:
+    /// an auto-hiding menu bar covers the icon without the bar being full.
+    var iconFrame: CGRect? {
+        guard let button = statusItem.button, let window = button.window, window.isVisible else { return nil }
+        let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        guard frame.width > 0, NSScreen.screens.contains(where: { $0.frame.intersects(frame) }) else { return nil }
+        return frame
+    }
+
     func changePopoverPage(by delta: Int) {
         popoverPages.change(by: delta)
     }
