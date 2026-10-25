@@ -18,12 +18,22 @@ enum ChildProcess {
     /// PATH gets the binary's own directory and the usual install prefixes, so
     /// an npm-installed CLI whose first line is `#!/usr/bin/env node` can find
     /// the node that installed it.
-    static func environment(binary: URL) -> [String: String] {
+    ///
+    /// PWD is set to `directory`, the folder the child really starts in: pass
+    /// the process's `currentDirectoryURL` once it is set. `Process` moves the
+    /// working directory without touching PWD, and a Hotch opened with `open`
+    /// from a shell (`make run` does exactly that) carries the folder that
+    /// shell was in. Claude Code's `-p` mode opens the folder PWD names, so a
+    /// project under ~/Desktop or ~/Documents raised macOS's folder access
+    /// prompt in Hotch's name within two seconds of a first launch.
+    static func environment(binary: URL, directory: URL?) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         for key in ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT",
                     "CLAUDE_AGENT_SDK_VERSION", "CLAUDE_CODE_SESSION_ID"] {
             env[key] = nil
         }
+        env["PWD"] = directory?.path
+        env["OLDPWD"] = nil
         env["NO_COLOR"] = "1"
         env["TERM"] = "dumb"
 

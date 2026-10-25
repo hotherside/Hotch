@@ -182,9 +182,11 @@ enum ClaudeCodeBridge {
         return dir
     }
 
-    /// Whether a working directory is Hotch's own scratch folder.
+    /// Whether a working directory is Hotch's own scratch folder. Decided from
+    /// the string alone: `URL(fileURLWithPath:)` would stat every session's
+    /// project folder on every scan.
     static func isOwnWorkDirectory(_ path: String) -> Bool {
-        URL(fileURLWithPath: path).lastPathComponent == workDirectoryName
+        (path as NSString).lastPathComponent == workDirectoryName
     }
 
     // MARK: - Sign-in state
@@ -380,7 +382,8 @@ enum ClaudeCodeBridge {
                                                     "--output-format", "stream-json",
                                                     "--verbose"]
         process.currentDirectoryURL = workDirectory()
-        var environment = ChildProcess.environment(binary: install.url)
+        var environment = ChildProcess.environment(binary: install.url,
+                                                     directory: process.currentDirectoryURL)
         // A usage read has no business updating anything.
         environment["DISABLE_AUTOUPDATER"] = "1"
         process.environment = environment
@@ -609,7 +612,8 @@ enum ClaudeCodeBridge {
         process.executableURL = binary
         process.arguments = arguments
         process.currentDirectoryURL = workDirectory()
-        var environment = ChildProcess.environment(binary: binary)
+        var environment = ChildProcess.environment(binary: binary,
+                                                     directory: process.currentDirectoryURL)
         environment["DISABLE_AUTOUPDATER"] = "1"
         process.environment = environment
         let output = Pipe(), errors = Pipe()
@@ -691,7 +695,8 @@ enum ClaudeCodeLogin {
         process.executableURL = install.url
         process.arguments = arguments
         process.currentDirectoryURL = ClaudeCodeBridge.workDirectory()
-        process.environment = ChildProcess.environment(binary: install.url)
+        process.environment = ChildProcess.environment(binary: install.url,
+                                                       directory: process.currentDirectoryURL)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -747,7 +752,8 @@ enum ClaudeCodeLogin {
         let process = Process()
         process.executableURL = install.url
         process.arguments = arguments
-        process.environment = ChildProcess.environment(binary: install.url)
+        process.environment = ChildProcess.environment(binary: install.url,
+                                                       directory: process.currentDirectoryURL)
         process.standardInput = FileHandle.standardInput
         process.standardOutput = FileHandle.standardOutput
         process.standardError = FileHandle.standardError

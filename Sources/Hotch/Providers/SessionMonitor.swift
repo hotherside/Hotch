@@ -969,7 +969,9 @@ enum SessionScanner {
         if let worktrees = path.range(of: "/.claude/worktrees/") {
             path = String(path[path.startIndex..<worktrees.lowerBound])
         }
-        let name = URL(fileURLWithPath: path).lastPathComponent
+        // A string operation, not `URL(fileURLWithPath:)`, which stats the
+        // folder to learn whether it is one.
+        let name = (path as NSString).lastPathComponent
         return name == "/" ? "" : name
     }
 }
