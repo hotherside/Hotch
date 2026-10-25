@@ -6,8 +6,8 @@ Everything for the README, the website and social posts, in one place. All of it
 
 | File | What it is |
 |---|---|
-| `video/hotch-reel.mp4` | The full reel: 53 s, 1920 x 1080, 60 fps, silent |
-| `video/hotch-reel.gif` | The README cut: tab, AI, Sessions, the light/dark sweep and This Mac; 16.6 s, 1080 px, 15 fps |
+| `video/hotch-reel.mp4` | The full reel: 26 s, 1920 x 1080, 60 fps, silent |
+| `video/hotch-reel.gif` | The README cut: AI, Sessions, the light/dark sweep, This Mac, an alert and the notch; 16 s, 1080 px, 15 fps |
 
 ## Stills (3840 x 2160)
 

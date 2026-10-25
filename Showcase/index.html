@@ -3,6 +3,7 @@
   Hotch reel: the real app, recorded with `Hotch --demo-tour` in a dark and a
   light take, composited onto the desktop in plates/desktop.html, then framed
   here. One camera moves both takes; a sweep between them shows light and dark.
+  Each clip is a window onto a take: tour time = reel time - data-start + data-media-start.
 
   Footage (Showcase/footage, not in Git) is rebuilt with the steps in README.md.
   Desktop coordinates below are points on the 2560 x 1440 recording; the
@@ -47,15 +48,15 @@
       #scrim-top { background: radial-gradient(90% 75% at 0% 0%, rgba(6,5,10,0.72) 0%, rgba(6,5,10,0.4) 40%, rgba(6,5,10,0) 72%); }
       #root .cap { position: absolute; left: 112px; bottom: 112px; width: 980px; }
       #root .cap.top { bottom: auto; top: 104px; }
-      .cap h2 { font-weight: 640; font-size: 68px; line-height: 1.04; letter-spacing: -0.03em; color: #f5f5f7; }
+      .cap h2 { font-weight: 660; font-size: 80px; line-height: 1.02; letter-spacing: -0.035em; color: #f5f5f7; }
       .cap p { margin-top: 18px; font-weight: 420; font-size: 29px; line-height: 1.36; letter-spacing: -0.012em;
         color: rgba(245,245,247,0.68); max-width: 760px; font-variation-settings: "opsz" 20; }
       .cap.ink h2 { color: #1d1d1f; }
       .cap.ink p { color: rgba(29,29,31,0.62); }
       .cap .w { display: inline-block; }
-      .roll { position: relative; display: block; height: 72px; overflow: hidden; }
+      .roll { position: relative; display: block; height: 84px; overflow: hidden; }
       .roll .stack { position: absolute; left: 0; top: 0; }
-      .roll .stack span { display: block; height: 72px; line-height: 70px; color: #f5a524; }
+      .roll .stack span { display: block; height: 84px; line-height: 82px; color: #f5a524; }
 
       /* Title and end cards: plain type on black. */
       #root .card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -75,19 +76,18 @@
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="53" data-width="1920" data-height="1080">
+    <div id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
 
       <div class="layer" id="dark-layer">
         <div class="cam" data-layout-allow-overflow>
           <div id="screen-shadow"></div>
           <div class="screen">
             <img src="footage/plate-dark.jpg" alt="" />
-            <video id="dark-1" class="clip" src="footage/desk-dark.mp4" muted data-start="3.6" data-duration="16.9" data-media-start="0"></video>
-            <video id="dark-2" class="clip" src="footage/desk-dark.mp4" muted data-start="20.5" data-duration="13.4" data-media-start="17.5"></video>
-            <video id="dark-3" class="clip" src="footage/desk-dark.mp4" muted data-start="33.9" data-duration="4.7" data-media-start="31.7"></video>
-            <video id="dark-4" class="clip" src="footage/desk-dark.mp4" muted data-start="38.6" data-duration="3.3" data-media-start="37.6"></video>
-            <video id="dark-5" class="clip" src="footage/desk-dark.mp4" muted data-start="41.9" data-duration="3.3" data-media-start="42.9"></video>
-            <video id="dark-6" class="clip" src="footage/desk-dark.mp4" muted data-start="45.2" data-duration="4.4" data-media-start="48.2"></video>
+            <video id="dark-ai" class="clip" src="footage/desk-dark.mp4" muted data-start="1.2" data-duration="4" data-media-start="0.6"></video>
+            <video id="dark-ses" class="clip" src="footage/desk-dark.mp4" muted data-start="5.2" data-duration="3.9" data-media-start="6.3"></video>
+            <video id="dark-notch" class="clip" src="footage/desk-dark.mp4" muted data-start="13.9" data-duration="3.7" data-media-start="24.2"></video>
+            <video id="dark-pill" class="clip" src="footage/desk-dark.mp4" muted data-start="17.6" data-duration="1.6" data-media-start="38.9"></video>
+            <video id="dark-dock" class="clip" src="footage/desk-dark.mp4" muted data-start="20.8" data-duration="2.6" data-media-start="49.4"></video>
           </div>
         </div>
       </div>
@@ -96,9 +96,11 @@
         <div class="cam" data-layout-allow-overflow>
           <div class="screen">
             <img src="footage/plate-light.jpg" alt="" />
-            <video id="light-1" class="clip" src="footage/desk-light.mp4" muted data-start="3.6" data-duration="16.9" data-media-start="0"></video>
-            <video id="light-2" class="clip" src="footage/desk-light.mp4" muted data-start="20.5" data-duration="13.4" data-media-start="17.5"></video>
-            <video id="light-3" class="clip" src="footage/desk-light.mp4" muted data-start="41.9" data-duration="3.3" data-media-start="42.9"></video>
+            <video id="light-ses" class="clip" src="footage/desk-light.mp4" muted data-start="5.2" data-duration="3.9" data-media-start="6.3"></video>
+            <video id="light-mac" class="clip" src="footage/desk-light.mp4" muted data-start="9.1" data-duration="2.6" data-media-start="11"></video>
+            <video id="light-close" class="clip" src="footage/desk-light.mp4" muted data-start="11.7" data-duration="0.4" data-media-start="16.2"></video>
+            <video id="light-alert" class="clip" src="footage/desk-light.mp4" muted data-start="12.1" data-duration="2.5" data-media-start="17.7"></video>
+            <video id="light-orb" class="clip" src="footage/desk-light.mp4" muted data-start="19.2" data-duration="1.6" data-media-start="44.15"></video>
           </div>
         </div>
       </div>
@@ -116,24 +118,22 @@
       <div class="scrim" id="scrim-light"></div>
       <div class="scrim" id="scrim-top"></div>
 
-      <div id="title" class="card clip" data-start="0" data-duration="3.4">
+      <div id="title" class="card clip" data-start="0" data-duration="1.6">
         <h1><span class="w">Meet</span> <span class="w">Hotch.</span></h1>
-        <p>AI limits and agents, at the edge of your screen.</p>
       </div>
 
-      <div id="c-ai" class="cap clip" data-start="5.75" data-duration="4.4"><h2>AI limits, at a glance.</h2><p>Claude and Codex usage, resets and a forecast.</p></div>
-      <div id="c-ses" class="cap clip" data-start="10.5" data-duration="2.6"><h2>Every agent, live.</h2><p>Which one is working, and which needs you.</p></div>
-      <div id="c-theme" class="cap ink clip" data-start="13.3" data-duration="1.75"><h2>Light or dark.</h2></div>
-      <div id="c-mac" class="cap ink clip" data-start="15.3" data-duration="4.3"><h2>Your Mac, too.</h2><p>CPU, memory, temperatures and power, every second.</p></div>
-      <div id="c-alert" class="cap ink clip" data-start="20.95" data-duration="3.95"><h2>It taps you when it matters.</h2><p>Click an alert to jump straight to the session.</p></div>
-      <div id="c-notch" class="cap clip" data-start="28.3" data-duration="4.8"><h2>Where it all started.</h2><p>The original notch view, still here on your MacBook.</p></div>
-      <div id="c-wing" class="cap clip" data-start="34.3" data-duration="4.1"><h2>Right where you look.</h2><p>Alerts slide out from the notch.</p></div>
-      <div id="c-homes" class="cap top clip" data-start="38.7" data-duration="10.1" data-layout-allow-occlusion>
+      <div id="c-ai" class="cap clip" data-start="2.85" data-duration="2.3"><h2>AI limits, at a glance.</h2></div>
+      <div id="c-ses" class="cap clip" data-start="5.85" data-duration="1.6"><h2>Every agent, live.</h2></div>
+      <div id="c-theme" class="cap ink clip" data-start="7.6" data-duration="1.4"><h2>Light or dark.</h2></div>
+      <div id="c-mac" class="cap ink clip" data-start="9.75" data-duration="1.85"><h2>Your Mac, too.</h2></div>
+      <div id="c-alert" class="cap ink clip" data-start="12.35" data-duration="1.8"><h2>Taps you when it matters.</h2></div>
+      <div id="c-notch" class="cap clip" data-start="15.05" data-duration="2.4"><h2>Where it all started.</h2></div>
+      <div id="c-homes" class="cap top clip" data-start="17.65" data-duration="4.95" data-layout-allow-occlusion>
         <h2>Or keep it<span class="roll" data-layout-allow-overlap data-layout-allow-overflow><span class="stack"><span>as a pill.</span><span>as an orb.</span><span>beside the Dock.</span></span></span></h2>
       </div>
 
       <div id="fade"></div>
-      <div id="end" class="card clip" data-start="48.9" data-duration="4.1">
+      <div id="end" class="card clip" data-start="23" data-duration="3">
         <div class="lockup">
           <svg viewBox="21 10 54 80" aria-hidden="true">
             <path id="e-curve" d="M60 16 C17 21 17 79 60 84" fill="none" stroke="#f7f5ed" stroke-width="12" stroke-linecap="round"
@@ -161,23 +161,17 @@
 
         // Cursor, in footage pixels.
         const at = (x, y) => ({ x: x * P, y: y * P });
-        const move = (t, x, y, duration) => tl.to("#cursor", { ...at(x, y), duration: duration || 0.6, ease: "power2.inOut" }, t);
+        const move = (t, x, y, duration) => tl.to("#cursor", { ...at(x, y), duration: duration || 0.5, ease: "power2.inOut" }, t);
         const press = (t) => {
           tl.to("#cursor", { scale: 0.86, transformOrigin: "8% 6%", duration: 0.06, ease: "power2.in" }, t);
           tl.to("#cursor", { scale: 1, duration: 0.1, ease: "power2.out" }, t + 0.06);
         };
 
-        // Captions in and out.
-        const capIn = (sel, t) => {
-          tl.fromTo(`${sel} h2`, { opacity: 0, y: 14, filter: "blur(6px)" },
-            { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.42, ease: "expo.out" }, t);
-          if (document.querySelector(sel + " p")) {
-            tl.fromTo(`${sel} p`, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.42, ease: "expo.out" }, t + 0.1);
-          }
-        };
-        // Timed elements keep their own opacity, so fades act on what is inside them.
-        const capOut = (sel, t) => tl.to(`${sel} > *`, { opacity: 0, filter: "blur(6px)", duration: 0.22, ease: "power2.in" }, t);
-        const scrim = (sel, t, on) => tl.to(sel, { opacity: on ? 1 : 0, duration: 0.4, ease: "power2.inOut" }, t);
+        // Headlines in and out. Timed elements keep their own opacity, so fades act on what is inside them.
+        const capIn = (sel, t) => tl.fromTo(sel + " h2", { opacity: 0, y: 16, filter: "blur(8px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.36, ease: "expo.out" }, t);
+        const capOut = (sel, t) => tl.to(sel + " > *", { opacity: 0, filter: "blur(6px)", duration: 0.18, ease: "power2.in" }, t);
+        const scrim = (sel, t, on) => tl.to(sel, { opacity: on ? 1 : 0, duration: 0.3, ease: "power2.inOut" }, t);
 
         // Sweep between takes, in screen space. Edge `--b` reveals light, `--a` returns to dark.
         const sweep = (t, edge, duration) => {
@@ -188,99 +182,84 @@
         };
         const light = (t, on) => tl.set("#light-layer", on ? { "--a": "-400px", "--b": "2420px" } : { "--a": "-400px", "--b": "-400px" }, t);
 
-        // 0 to 3.6: title on black, then the screen rises into place.
+        // 0 to 1.9: the title, and the screen rising under it.
+        tl.fromTo("#title h1", { scale: 1.06 }, { scale: 1, duration: 1.1, ease: "expo.out" }, 0);
+        tl.to("#title > *", { opacity: 0, y: -40, duration: 0.4, ease: "power3.in" }, 1.15);
         tl.fromTo(cams, { ...frame(0.42, 1280, 720), y: 1200 },
-          { ...frame(0.42, 1280, 720), duration: 1.0, ease: "expo.out" }, 2.65);
-        tl.fromTo("#title h1 .w", { opacity: 0, y: 18, filter: "blur(10px)" },
-          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.6, stagger: 0.12, ease: "expo.out" }, 0.15);
-        tl.fromTo("#title p", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: "expo.out" }, 0.55);
-        tl.to("#title > *", { opacity: 0, y: -40, duration: 0.5, ease: "power3.in" }, 2.85);
+          { ...frame(0.42, 1280, 720), duration: 0.8, ease: "expo.out" }, 1.15);
 
-        // Fill the frame as the tab appears (3.6), then push in on the edge.
-        cam(3.75, 0.5, 1280, 720, 0.9, "power2.inOut");
-        cam(4.65, 0.95, 1890, 560, 1.1);
+        // Straight in to the edge; the card opens on AI as the move lands (2.73).
+        cam(1.95, 0.95, 1890, 560, 0.75);
+        tl.set("#cursor", { ...at(1500, 1300), opacity: 1 }, 1.8);
+        move(1.9, 2537, 397, 0.65);
+        scrim("#scrim-dark", 2.7, true);
+        capIn("#c-ai", 2.9);
+        capOut("#c-ai", 4.95);
 
-        // The cursor rests on the Claude readout; the card opens on AI (5.73).
-        tl.set("#cursor", { ...at(1700, 1250), opacity: 1 }, 4.4);
-        move(4.6, 2537, 397, 0.9);
-        scrim("#scrim-dark", 5.6, true);
-        capIn("#c-ai", 5.85);
-        capOut("#c-ai", 9.95);
+        // Sessions (5.75), then light or dark across the open card.
+        move(5.2, 2537, 441, 0.4);
+        press(5.68);
+        capIn("#c-ses", 5.9);
+        capOut("#c-ses", 7.27);
+        sweep(7.4, "--b", 0.8);
+        scrim("#scrim-dark", 7.45, false);
+        scrim("#scrim-light", 7.55, true);
+        capIn("#c-theme", 7.7);
+        capOut("#c-theme", 8.82);
 
-        // Sessions (10.45): a click on its readout.
-        move(9.85, 2537, 441, 0.45);
-        press(10.38);
-        capIn("#c-ses", 10.6);
-        capOut("#c-ses", 12.9);
+        // This Mac (9.68), from the card's own tab bar.
+        move(9.0, 2354, 358, 0.45);
+        press(9.6);
+        capIn("#c-mac", 9.8);
+        capOut("#c-mac", 11.42);
 
-        // Light or dark: the sweep crosses the open card.
-        sweep(13.0, "--b", 1.0);
-        scrim("#scrim-dark", 13.1, false);
-        scrim("#scrim-light", 13.2, true);
-        capIn("#c-theme", 13.4);
-        capOut("#c-theme", 14.85);
+        // The card closes (11.81) and an alert grows out of the tab (12.29); a click acts on it.
+        move(11.35, 2050, 760, 0.4);
+        cam(11.75, 1.0, 1920, 500, 0.5);
+        capIn("#c-alert", 12.4);
+        move(13.2, 2380, 440, 0.5);
+        press(13.9);
+        capOut("#c-alert", 13.97);
 
-        // This Mac (15.18): a click on the card's own tab bar.
-        move(14.4, 2354, 358, 0.55);
-        press(15.1);
-        capIn("#c-mac", 15.4);
-        capOut("#c-mac", 19.4);
-
-        // The pointer leaves; the card closes (19.91). The idle beat is cut at 20.5.
-        move(19.0, 2050, 760, 0.6);
-        cam(19.6, 1.0, 1920, 500, 0.9);
-
-        // The alert grows out of the tab (20.89); a click retracts it (24.9).
-        capIn("#c-alert", 21.05);
-        move(23.5, 2380, 440, 0.6);
-        press(24.75);
-        capOut("#c-alert", 24.7);
-
-        // Back to dark, and up to the notch (26.14), where the panel opens on hover (28.25).
-        sweep(25.2, "--a", 0.85);
-        scrim("#scrim-light", 25.25, false);
-        light(26.1, false);
-        cam(25.4, 1.0, 1280, 360, 1.5);
-        move(25.6, 1600, 520, 1.0);
-        move(27.3, 1286, 18, 0.8);
-        scrim("#scrim-dark", 27.9, true);
-        capIn("#c-notch", 28.4);
-        move(32.6, 1700, 700, 0.7);
-        capOut("#c-notch", 32.9);
-
-        // The notch speaks (34.27).
-        tl.to("#cursor", { opacity: 0, duration: 0.25 }, 33.4);
-        capIn("#c-wing", 34.45);
-        capOut("#c-wing", 38.2);
-        scrim("#scrim-dark", 38.2, false);
+        // Back to dark on the way up to the notch, where the panel opens on hover (14.95).
+        sweep(14.0, "--a", 0.6);
+        scrim("#scrim-light", 14.0, false);
+        light(14.65, false);
+        cam(13.95, 1.0, 1280, 360, 0.75);
+        move(14.0, 1286, 18, 0.8);
+        scrim("#scrim-dark", 14.7, true);
+        capIn("#c-notch", 15.1);
+        move(16.9, 1700, 700, 0.5);
+        tl.to("#cursor", { opacity: 0, duration: 0.2 }, 17.3);
+        capOut("#c-notch", 17.27);
+        scrim("#scrim-dark", 17.3, false);
 
         // Homes: a pill (dark), an orb (light), beside the Dock (dark).
-        cut(38.6, 1.0, 1920, 600);
-        scrim("#scrim-top", 38.6, true);
-        tl.fromTo("#c-homes h2", { opacity: 0, y: 14, filter: "blur(6px)" },
-          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.42, ease: "expo.out" }, 38.7);
-        tl.to("#c-homes .stack", { y: -72, duration: 0.34, ease: "power3.inOut" }, 41.8);
-        light(41.9, true);
-        tl.set("#c-homes", { attr: { class: "cap top clip ink" } }, 41.9);
-        tl.set("#scrim-top", { background: "radial-gradient(90% 75% at 0% 0%, rgba(250,247,244,0.88) 0%, rgba(250,247,244,0.5) 40%, rgba(250,247,244,0) 72%)" }, 41.9);
-        tl.to("#c-homes .stack", { y: -144, duration: 0.34, ease: "power3.inOut" }, 45.1);
-        light(45.2, false);
-        tl.set("#c-homes", { attr: { class: "cap top clip" } }, 45.2);
-        tl.set("#scrim-top", { background: "radial-gradient(90% 75% at 0% 0%, rgba(6,5,10,0.72) 0%, rgba(6,5,10,0.4) 40%, rgba(6,5,10,0) 72%)" }, 45.2);
-        cut(45.2, 1.0, 1250, 1080);
-        capOut("#c-homes", 48.6);
-        scrim("#scrim-top", 48.5, false);
+        cut(17.6, 1.0, 1920, 600);
+        scrim("#scrim-top", 17.6, true);
+        capIn("#c-homes", 17.7);
+        tl.to("#c-homes .stack", { y: -84, duration: 0.3, ease: "power3.inOut" }, 19.1);
+        light(19.2, true);
+        tl.set("#c-homes", { attr: { class: "cap top clip ink" } }, 19.2);
+        tl.set("#scrim-top", { background: "radial-gradient(90% 75% at 0% 0%, rgba(250,247,244,0.88) 0%, rgba(250,247,244,0.5) 40%, rgba(250,247,244,0) 72%)" }, 19.2);
+        tl.to("#c-homes .stack", { y: -168, duration: 0.3, ease: "power3.inOut" }, 20.7);
+        light(20.8, false);
+        tl.set("#c-homes", { attr: { class: "cap top clip" } }, 20.8);
+        tl.set("#scrim-top", { background: "radial-gradient(90% 75% at 0% 0%, rgba(6,5,10,0.72) 0%, rgba(6,5,10,0.4) 40%, rgba(6,5,10,0) 72%)" }, 20.8);
+        cut(20.8, 1.0, 1250, 1080);
+        capOut("#c-homes", 22.35);
+        scrim("#scrim-top", 22.3, false);
 
-        // Pull back to the whole screen, then the end card.
-        cam(47.9, 0.42, 1280, 720, 1.3, "power3.inOut");
-        tl.to("#fade", { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 48.95);
+        // Pull back, then the end card.
+        cam(22.3, 0.42, 1280, 720, 0.9);
+        tl.to("#fade", { opacity: 1, duration: 0.4, ease: "power2.inOut" }, 22.95);
         tl.fromTo("#e-curve", { attr: { "stroke-dashoffset": 100 } },
-          { attr: { "stroke-dashoffset": 0 }, duration: 0.55, ease: "power2.inOut" }, 49.25);
+          { attr: { "stroke-dashoffset": 0 }, duration: 0.45, ease: "power2.inOut" }, 23.2);
         tl.fromTo("#e-signal", { scale: 0, transformOrigin: "50% 50%" },
-          { scale: 1, duration: 0.32, ease: "back.out(2)" }, 49.7);
-        tl.fromTo("#end .word", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.5, ease: "expo.out" }, 49.75);
-        tl.fromTo("#end .line", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "expo.out" }, 50.1);
-        tl.fromTo("#end .url", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, 50.35);
+          { scale: 1, duration: 0.3, ease: "back.out(2)" }, 23.6);
+        tl.fromTo("#end .word", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.45, ease: "expo.out" }, 23.55);
+        tl.fromTo("#end .line", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "expo.out" }, 23.75);
+        tl.fromTo("#end .url", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 23.9);
 
         window.__timelines = window.__timelines || {};
         window.__timelines["main"] = tl;

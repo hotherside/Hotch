@@ -2,9 +2,9 @@
 
 Hotch is a native macOS companion for a glance at AI plan usage, active Claude Code and Codex work, and Mac activity. Keep it on a screen edge, by the Dock, around the notch, floating on your desktop, or in the menu bar. It is built with Swift and SwiftUI, targets macOS 14 or later, and has no third-party package dependencies.
 
-[![Hotch on the screen edge: the tab opens AI usage, then live agent sessions, a sweep turns the desktop from dark to light, then Mac health](docs/marketing/video/hotch-reel.gif)](docs/marketing/video/hotch-reel.mp4)
+[![Hotch on the screen edge: the tab opens AI usage and live agent sessions, a sweep turns the desktop from dark to light, then Mac health, an alert, and the original notch view](docs/marketing/video/hotch-reel.gif)](docs/marketing/video/hotch-reel.mp4)
 
-Recorded from the real app with demo data. [Watch the full 53-second reel](docs/marketing/video/hotch-reel.mp4), with alerts, the original notch view, and the pill, orb and Dock homes.
+Recorded from the real app with demo data. [Watch the full 26-second reel](docs/marketing/video/hotch-reel.mp4), with the pill, orb and Dock homes.
 
 **Try it:** [Build from source](#build-from-source) · [Report a bug](https://github.com/hotherside/Hotch/issues/new/choose) · [Contribute](CONTRIBUTING.md)
 

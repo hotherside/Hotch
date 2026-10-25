@@ -1,6 +1,6 @@
 # Hotch showcase source
 
-The 53-second reel and the README GIF show the real app. `Hotch --demo-tour` runs the real anchors on demo data and plays a fixed sequence, `tools/record-tour.swift` records only Hotch's windows (no desktop, no other apps), and that recording is placed on a stand-in desktop and framed here with HyperFrames. A dark and a light take are recorded with the same timing, so the reel can sweep between them mid-motion.
+The 26-second reel and the README GIF show the real app. `Hotch --demo-tour` runs the real anchors on demo data and plays a fixed sequence, `tools/record-tour.swift` records only Hotch's windows (no desktop, no other apps), and that recording is placed on a stand-in desktop and framed here with HyperFrames. A dark and a light take are recorded with the same timing, so the reel can sweep between them mid-motion.
 
 Nothing in the footage is a mock-up of Hotch: the cards, tab, notch panel, alerts, pill, orb and Dock bar are the app drawing itself. The desktop (wallpaper, menu bar, terminal, Dock icons) is drawn in `plates/desktop.html`, and the notch is a stand-in for a 14" MacBook Pro's. The session names and figures are fictional.
 
@@ -34,10 +34,10 @@ npx hyperframes@0.8.185 render -o renders/hotch-reel.mp4 --fps 60 --quality deli
 
 The scripts pin HyperFrames to version `0.8.185`; rendering needs its headless Chrome (`npx hyperframes@0.8.185 browser ensure`). The composition loads GSAP `3.14.2` from jsDelivr, so previewing and rendering need network access. Read `AGENTS.md` before changing compositions.
 
-README media from the render (the first act as a 1080 px, 15 fps GIF, about 5 MB, and the whole reel):
+README media from the render (the first 16 seconds as a 1080 px, 15 fps GIF, about 5 MB, and the whole reel):
 
 ```sh
-ffmpeg -ss 3.4 -t 16.6 -i renders/hotch-reel.mp4 -vf "fps=15,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 ../docs/marketing/video/hotch-reel.gif
+ffmpeg -ss 1.2 -t 16.1 -i renders/hotch-reel.mp4 -vf "fps=15,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 ../docs/marketing/video/hotch-reel.gif
 ffmpeg -i renders/hotch-reel.mp4 -c copy -movflags +faststart ../docs/marketing/video/hotch-reel.mp4
 ```
 
