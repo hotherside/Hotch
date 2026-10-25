@@ -12,8 +12,8 @@ enum WelcomeStyle {
 
     /// Tall enough for the letter on a typical screen, never taller than the
     /// screen itself. Setup scrolls inside it on a short display.
-    static func windowSize(for screen: NSScreen?) -> CGSize {
-        let visible = screen?.visibleFrame.height ?? 800
+    static func windowSize(for screen: NSScreen?, visibleHeight: CGFloat? = nil) -> CGSize {
+        let visible = visibleHeight ?? screen?.visibleFrame.height ?? 800
         return CGSize(width: width, height: min(580, max(380, visible - 60)))
     }
 
@@ -115,8 +115,37 @@ struct WelcomeLetterView: View {
 
     private func content(_ timeline: WelcomeTimeline) -> some View {
         VStack(spacing: 0) {
-            // Clear of the title bar, then the letter sits in the middle of
-            // whatever height the screen allows.
+            // The letter sits in the middle of whatever height the screen
+            // allows, and scrolls on a display too short to hold it. The
+            // button stays in reach below it either way.
+            GeometryReader { proxy in
+                ScrollView {
+                    letter(timeline)
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
+            VStack(spacing: 14) {
+                if !installed { installNote }
+                Button(action: onContinue) {
+                    Text("Set up Hotch").frame(minWidth: 150)
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+            .opacity(timeline.footer)
+            .padding(.horizontal, WelcomeStyle.padding)
+            .padding(.top, 14)
+            .padding(.bottom, 30)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(alignment: .top) { WelcomeGlow(amount: timeline.glow) }
+    }
+
+    private func letter(_ timeline: WelcomeTimeline) -> some View {
+        VStack(spacing: 0) {
+            // Clear of the title bar.
             Spacer(minLength: 34)
             WelcomeMark(timeline: timeline)
             Text(WelcomeCopy.greeting)
@@ -150,22 +179,9 @@ struct WelcomeLetterView: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 18)
-            Spacer(minLength: 18)
-            VStack(spacing: 14) {
-                if !installed { installNote }
-                Button(action: onContinue) {
-                    Text("Set up Hotch").frame(minWidth: 150)
-                }
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-            .opacity(timeline.footer)
-            .padding(.bottom, 30)
+            Spacer(minLength: 4)
         }
         .padding(.horizontal, WelcomeStyle.padding)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(alignment: .top) { WelcomeGlow(amount: timeline.glow) }
     }
 
     /// A copy run from the disk image works, but cannot open at login and is

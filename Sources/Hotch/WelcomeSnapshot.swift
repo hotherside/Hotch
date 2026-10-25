@@ -68,6 +68,13 @@ enum WelcomeSnapshot {
         }
         write(capture(view(.letter, installed: false), dark: false), dark: false,
               to: root.appendingPathComponent("welcome-not-installed-light.png"))
+        // The shortest window a small display gets: nothing may be cut off.
+        window.setContentSize(WelcomeStyle.windowSize(for: nil, visibleHeight: 0))
+        write(capture(view(.letter, installed: false), dark: false), dark: false,
+              to: root.appendingPathComponent("welcome-letter-short-light.png"))
+        write(capture(view(.setup), dark: false), dark: false,
+              to: root.appendingPathComponent("welcome-setup-short-light.png"))
+        window.setContentSize(CGSize(width: WelcomeStyle.width, height: 580))
 
         let count = Int((frameSpan * framesPerSecond).rounded())
         for index in 0...count {

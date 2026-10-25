@@ -133,8 +133,9 @@ struct OnboardingView: View {
     var readyOverride: Set<String>? = nil
 
     @State private var phase: Phase?
+    /// Back from setup shows the letter as it was left, not greeting again.
+    @State private var letterRead = false
     @State private var readyIDs: Set<String> = []
-    @FocusState private var placementFocused: Bool
 
     private var current: Phase { phase ?? initialPhase }
 
@@ -142,7 +143,8 @@ struct OnboardingView: View {
         ZStack {
             switch current {
             case .letter:
-                WelcomeLetterView(installed: installed, frozenAt: frozenAt,
+                WelcomeLetterView(installed: installed,
+                                  frozenAt: frozenAt ?? (letterRead ? WelcomeTimeline.duration : nil),
                                   onExplainInstall: onExplainInstall,
                                   onContinue: { go(to: .setup) })
                     .transition(slide(forward: false))
@@ -161,12 +163,12 @@ struct OnboardingView: View {
     }
 
     private func go(to next: Phase) {
+        if next == .setup { letterRead = true }
         if let animation = HMotion.section {
             withAnimation(animation.speed(0.6)) { phase = next }
         } else {
             phase = next
         }
-        if next == .setup { placementFocused = true }
     }
 
     private func slide(forward: Bool) -> AnyTransition {
@@ -233,10 +235,10 @@ struct OnboardingView: View {
                     .accessibilityAddTraits(prefs.anchor == anchor ? [.isSelected] : [])
                 }
             }
-            // One stop for the keyboard: Tab here, then the arrow keys move
-            // Hotch, the way a segmented control behaves.
-            .focusable()
-            .focused($placementFocused)
+            // One stop for the keyboard, reached by Tab when Full Keyboard
+            // Access is on (as buttons are); the arrow keys then move Hotch,
+            // the way a segmented control behaves.
+            .focusable(interactions: .activate)
             .onMoveCommand { direction in
                 let all = HotchPrefs.Anchor.allCases
                 guard let index = all.firstIndex(of: prefs.anchor) else { return }
