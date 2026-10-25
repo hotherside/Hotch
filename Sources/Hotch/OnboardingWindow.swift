@@ -1,15 +1,19 @@
 import AppKit
 import SwiftUI
 
-/// A short native introduction. Preferences apply live so placement can be
-/// tried before finishing; closing early leaves welcome available next launch.
+/// The welcome: a short letter, then one screen to choose placement and
+/// providers. Preferences apply live so placement can be tried before
+/// finishing; closing early leaves welcome available next launch.
 @MainActor
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
     private let settings: AppSettings
     private var window: NSWindow?
-    var onPreviewAlert: () -> Void = {}
     var onOpenSettings: () -> Void = {}
-    var onFinish: () -> Void = {}
+    var onExplainInstall: () -> Void = {}
+    /// Placement changed while choosing, so the app can point at the new spot.
+    var onPlacementChange: () -> Void = {}
+    /// Finished. Passes where the window was, for the signal to leave from.
+    var onFinish: (CGRect) -> Void = { _ in }
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -21,174 +25,260 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
             window.makeKeyAndOrderFront(nil)
             return
         }
-        let height = min(570, max(350, (NSScreen.main?.visibleFrame.height ?? 800) - 70))
         let view = OnboardingView(settings: settings,
-                                  onPreviewAlert: { [weak self] in self?.onPreviewAlert() },
+                                  installed: InstallLocation.isProperlyInstalled,
+                                  onExplainInstall: { [weak self] in self?.onExplainInstall() },
                                   onOpenSettings: { [weak self] in self?.onOpenSettings() },
+                                  onPlacementChange: { [weak self] in self?.onPlacementChange() },
                                   onFinish: { [weak self] in self?.finish() })
-        let hosting = NSHostingController(rootView: view)
-        if let window {
-            window.contentViewController = hosting
-        } else {
-            let created = NSWindow(contentViewController: hosting)
-            created.title = "Welcome to Hotch"
-            created.styleMask = [.titled, .closable]
-            created.isReleasedWhenClosed = false
-            created.delegate = self
-            window = created
+        let window = self.window ?? Self.makeWindow(delegate: self)
+        self.window = window
+        // A new view each time, so a replay from Settings greets afresh. The
+        // window keeps the size given here; the letter and setup fill it.
+        let host = NSHostingView(rootView: view)
+        host.sizingOptions = []
+        window.contentView = host
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let size = WelcomeStyle.windowSize(for: screen)
+        window.setContentSize(size)
+        // The middle of the screen, not AppKit's upper-third `center()`.
+        if let visible = screen?.visibleFrame {
+            let frame = window.frame
+            window.setFrameOrigin(NSPoint(x: visible.midX - frame.width / 2, y: visible.midY - frame.height / 2))
         }
-        window?.setContentSize(NSSize(width: 500, height: height))
-        window?.center()
+        window.alphaValue = 0
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        window.makeKeyAndOrderFront(nil)
+        // macOS may defer activation when another app launched Hotch. The
+        // greeting still comes to the front; a click on it makes it key.
+        window.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = HMotion.reduceMotion ? 0.15 : 0.35
+            window.animator().alphaValue = 1
+        }
+    }
+
+    /// A titled window with its title bar folded into the content: native
+    /// corners, shadow, close button, dragging and keyboard, without chrome.
+    static func makeWindow(_ kind: WelcomeWindow.Type = WelcomeWindow.self,
+                           delegate: NSWindowDelegate?) -> NSWindow {
+        let window = kind.init(contentRect: CGRect(origin: .zero, size: CGSize(width: WelcomeStyle.width, height: 560)),
+                                   styleMask: [.titled, .closable, .fullSizeContentView],
+                                   backing: .buffered, defer: false)
+        window.title = "Welcome to Hotch"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
+        window.delegate = delegate
+        return window
     }
 
     private func finish() {
         settings.completeWelcome()
-        window?.close()
-        onFinish()
+        guard let window else { onFinish(.zero); return }
+        let origin = window.frame
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = HMotion.reduceMotion ? 0.12 : 0.28
+            window.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated {
+                window.orderOut(nil)
+                window.alphaValue = 1
+            }
+        })
+        onFinish(origin)
+    }
+}
+
+/// Esc closes the letter (setup's Back takes it first), and ⌘W closes the
+/// window, which an accessory app's menu does not otherwise offer.
+class WelcomeWindow: NSWindow {
+    required override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask,
+                           backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        performClose(sender)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "w" {
+            performClose(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
 struct OnboardingView: View {
-    @ObservedObject var settings: AppSettings
-    @ObservedObject private var prefs = HotchPrefs.shared
-    var onPreviewAlert: () -> Void = {}
-    var onOpenSettings: () -> Void = {}
-    var onFinish: () -> Void = {}
-    @State private var step = 0
-    @State private var readyIDs: Set<String> = []
-    @State private var sampled = false
+    enum Phase { case letter, setup }
 
-    private let titles = ["A quiet companion.", "Make room for your work.", "Your Mac. Your choice."]
-    private let subtitles = [
-        "A small place for your agents, your attention and your Mac.",
-        "Choose where Hotch lives. You can move it any time.",
-        "Know what stays here and what connects to a provider.",
-    ]
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var prefs: HotchPrefs = .shared
+    var installed: Bool = true
+    var onExplainInstall: () -> Void = {}
+    var onOpenSettings: () -> Void = {}
+    var onPlacementChange: () -> Void = {}
+    var onFinish: () -> Void = {}
+    /// Rendered docs choose the phase and the moment of the greeting.
+    var initialPhase: Phase = .letter
+    var frozenAt: TimeInterval? = nil
+    /// Rendered docs show a fixed set of providers instead of this Mac's.
+    var readyOverride: Set<String>? = nil
+
+    @State private var phase: Phase?
+    @State private var readyIDs: Set<String> = []
+    @FocusState private var placementFocused: Bool
+
+    private var current: Phase { phase ?? initialPhase }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack {
-                        HotchBadge(size: 48)
-                        Spacer()
-                        Text("\(step + 1) OF 3")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .tracking(1.4)
-                            .foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(titles[step])
-                            .font(.system(size: 28, weight: .semibold, design: .rounded))
-                            .tracking(-0.7)
-                        Text(subtitles[step])
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Group {
-                        switch step {
-                        case 0: introduction
-                        case 1: placement
-                        default: privacy
-                        }
-                    }
-                }
-                .padding(28)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ZStack {
+            switch current {
+            case .letter:
+                WelcomeLetterView(installed: installed, frozenAt: frozenAt,
+                                  onExplainInstall: onExplainInstall,
+                                  onContinue: { go(to: .setup) })
+                    .transition(slide(forward: false))
+            case .setup:
+                setup.transition(slide(forward: true))
             }
-            Divider()
-            HStack(spacing: 12) {
-                if step > 0 {
-                    Button("Back") { step -= 1 }
-                } else {
-                    Text("About a minute to make it yours")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button(step == 2 ? "Start using Hotch" : "Continue") {
-                    if step < 2 { step += 1 } else { onFinish() }
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 18)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { refreshReadiness() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshReadiness()
         }
+        .onChange(of: prefs.anchor) { if current == .setup { onPlacementChange() } }
+        .onChange(of: prefs.edgeSide) { if current == .setup { onPlacementChange() } }
     }
 
-    private var introduction: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            feature("sparkle", "Keep your agents in sight", "See sessions and plan usage without leaving your work.")
-            feature("timer", "Protect a little focus", "Start a timer, check your Mac and get back to what matters.")
-            feature("bell.badge", "A gentle nudge", "Short alerts tell you when an agent needs you or finishes.")
-            feature("backpack", "Take your agents with you", "Find Backpack in the Now view to learn about keeping agents working with the lid closed.")
-            Divider()
-            HStack(spacing: 8) {
-                Image(systemName: "cursorarrow.motionlines")
-                Text("Hover to peek. Click to keep the card open.")
+    private func go(to next: Phase) {
+        if let animation = HMotion.section {
+            withAnimation(animation.speed(0.6)) { phase = next }
+        } else {
+            phase = next
+        }
+        if next == .setup { placementFocused = true }
+    }
+
+    private func slide(forward: Bool) -> AnyTransition {
+        guard !HMotion.reduceMotion else { return .opacity }
+        return .asymmetric(insertion: .opacity.combined(with: .offset(x: forward ? 28 : -28)),
+                           removal: .opacity.combined(with: .offset(x: forward ? 28 : -28)))
+    }
+
+    // MARK: Setup
+
+    private var setup: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .center, spacing: 12) {
+                        WelcomeMark(timeline: .settled, size: 34)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(WelcomeCopy.setupTitle)
+                                .font(.system(size: 20, weight: .semibold))
+                                .tracking(-0.3)
+                                .accessibilityAddTraits(.isHeader)
+                            Text(WelcomeCopy.setupSubtitle)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    placement
+                    Divider()
+                    providers
+                    Divider()
+                    clipboard
+                }
+                .padding(.horizontal, 30)
+                .padding(.top, 38)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            Text("The menu bar icon is always there. ⌥⌘H opens the card too when its shortcut is enabled.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            HStack(spacing: 12) {
+                Button("Back") { go(to: .letter) }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Start using Hotch", action: onFinish)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 30)
+            .padding(.vertical, 16)
         }
     }
 
     private var placement: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(HotchPrefs.Anchor.allCases) { anchor in
-                    Button {
-                        prefs.anchor = anchor
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: symbol(for: anchor))
-                                .frame(width: 20)
-                            Text(anchor.label).font(.system(size: 12, weight: .medium))
-                            Spacer(minLength: 0)
-                            if prefs.anchor == anchor {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor)
-                            }
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 10)
-                            .fill(prefs.anchor == anchor ? Color.accentColor.opacity(0.09) : Color.primary.opacity(0.04)))
-                        .overlay(RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(prefs.anchor == anchor ? Color.accentColor.opacity(0.5) : .clear))
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                    Button { prefs.anchor = anchor } label: {
+                        PlacementTile(anchor: anchor, side: prefs.edgeSide, selected: prefs.anchor == anchor)
                     }
                     .buttonStyle(.plain)
+                    .focusable(false)
+                    .accessibilityLabel(anchor.label)
+                    .accessibilityHint(PlacementTile.detail(anchor))
                     .accessibilityAddTraits(prefs.anchor == anchor ? [.isSelected] : [])
                 }
             }
-            if prefs.anchor == .edge {
-                Picker("Screen edge", selection: $prefs.edgeSide) {
-                    ForEach(HotchPrefs.EdgeSide.allCases) { side in
-                        Text(side.label).tag(side)
-                    }
+            // One stop for the keyboard: Tab here, then the arrow keys move
+            // Hotch, the way a segmented control behaves.
+            .focusable()
+            .focused($placementFocused)
+            .onMoveCommand { direction in
+                let all = HotchPrefs.Anchor.allCases
+                guard let index = all.firstIndex(of: prefs.anchor) else { return }
+                switch direction {
+                case .left where index > all.startIndex: prefs.anchor = all[index - 1]
+                case .right where index < all.endIndex - 1: prefs.anchor = all[index + 1]
+                default: break
                 }
-                .pickerStyle(.segmented)
             }
-            Divider()
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Where Hotch lives")
+            HStack(alignment: .center, spacing: 12) {
+                Text(PlacementTile.detail(prefs.anchor))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                if prefs.anchor == .edge {
+                    Picker("Screen edge", selection: $prefs.edgeSide) {
+                        ForEach([HotchPrefs.EdgeSide.left, .right, .bottom]) { side in
+                            Text(side.label).tag(side)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                }
+            }
+            .frame(minHeight: 24)
+        }
+    }
+
+    private var providers: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Ready on this Mac").font(.system(size: 12, weight: .semibold))
+                Text("Providers on this Mac").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button("Check again") { refreshReadiness() }.font(.system(size: 11))
+                Button("Check Again") { refreshReadiness() }
+                    .controlSize(.small)
             }
             if readyIDs.isEmpty {
-                Text("No provider sign-in found yet. You can connect one in Settings whenever you’re ready.")
+                Text("No signed-in provider found yet. Connect Claude Code, Codex or an API key in Settings whenever you’re ready.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -198,73 +288,120 @@ struct OnboardingView: View {
                         get: { settings.isEnabled(provider.id) },
                         set: { settings.setEnabled($0, providerID: provider.id) }))
                         .toggleStyle(.checkbox)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12.5))
                 }
             }
-            Text("Detection checks local configuration and CLI sign-in status. It sends no credentials or requests to providers.")
+            Text("Found by checking local sign-in status only. Providers you keep on fetch usage from their own services.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Provider settings…", action: onOpenSettings)
+            Button("Provider Settings…", action: onOpenSettings)
+                .buttonStyle(.link)
+                .font(.system(size: 12))
         }
     }
 
-    private var privacy: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            feature("internaldrive", "Local by default", "Sessions, focus history and Mac readings stay on this Mac. There is no Hotch account or analytics service.")
-            feature("network", "Usage comes from your providers", "Enabled providers contact their own services for usage and balance. Claude and Codex use their CLI sign-ins. API keys you add stay in Hotch’s support folder and go only to their provider.")
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Remember recent clipboard text", isOn: $settings.clipboardHistoryEnabled)
-                    .toggleStyle(.switch)
-                    .font(.system(size: 12, weight: .medium))
-                Text("Optional. Up to \(ClipboardStore.maxItems) text clips, held in memory until you quit. Concealed items are skipped. Turning this off stops watching and clears the history.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
-            HStack(spacing: 10) {
-                Button(sampled ? "Try alert again" : "Try a sample alert") {
-                    sampled = true
-                    onPreviewAlert()
-                }
-                .disabled(prefs.anchor == .menuBar)
-                Text(prefs.anchor == .menuBar ? "Choose a screen companion to preview its alert." : "Look for it at your chosen companion.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func feature(_ symbol: String, _ title: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 13, weight: .semibold))
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private func symbol(for anchor: HotchPrefs.Anchor) -> String {
-        switch anchor {
-        case .edge: return "sidebar.right"
-        case .notch: return "macbook"
-        case .pill: return "capsule"
-        case .orb: return "circle"
-        case .menuBar: return "menubar.rectangle"
+    private var clipboard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Remember recent clipboard text", isOn: $settings.clipboardHistoryEnabled)
+                .toggleStyle(.switch)
+                .font(.system(size: 13, weight: .medium))
+            Text("Optional. Up to \(ClipboardStore.maxItems) text clips, kept in memory until you quit. Concealed items are skipped.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func refreshReadiness() {
-        readyIDs = ProviderReadiness.configuredIDs(among: ProviderCatalog.all.map(\.id))
+        readyIDs = readyOverride ?? ProviderReadiness.configuredIDs(among: ProviderCatalog.all.map(\.id))
+    }
+}
+
+/// A placement as a tiny screen with the companion drawn where it would sit.
+struct PlacementTile: View {
+    var anchor: HotchPrefs.Anchor
+    var side: HotchPrefs.EdgeSide
+    var selected: Bool
+
+    static func title(_ anchor: HotchPrefs.Anchor) -> String {
+        switch anchor {
+        case .edge: return "Screen edge"
+        case .notch: return "Notch"
+        case .pill: return "Pill"
+        case .orb: return "Orb"
+        case .menuBar: return "Menu bar"
+        }
+    }
+
+    static func detail(_ anchor: HotchPrefs.Anchor) -> String {
+        switch anchor {
+        case .edge: return "A slim tab on the edge of your screen."
+        case .notch: return "Opens from the notch, the original Hotch view."
+        case .pill: return "A small pill that floats where you put it."
+        case .orb: return "A small circle that floats where you put it."
+        case .menuBar: return "Just the menu bar icon, nothing on screen."
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Canvas { context, size in draw(in: &context, size: size) }
+                .frame(width: 60, height: 40)
+            Text(Self.title(anchor))
+                .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? .primary : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(selected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(selected ? Color.accentColor.opacity(0.65) : Color.primary.opacity(0.06),
+                          lineWidth: selected ? 1.5 : 1))
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize) {
+        let screen = CGRect(origin: .zero, size: size).insetBy(dx: 0.75, dy: 0.75)
+        let frame = Path(roundedRect: screen, cornerRadius: 5, style: .continuous)
+        context.fill(frame, with: .color(.primary.opacity(0.05)))
+        context.stroke(frame, with: .color(.primary.opacity(0.28)), lineWidth: 1)
+        let bar = CGRect(x: screen.minX, y: screen.minY, width: screen.width, height: 5)
+        context.fill(Path(roundedRect: bar, cornerRadii: .init(topLeading: 5, topTrailing: 5)),
+                     with: .color(.primary.opacity(0.13)))
+        let warm = GraphicsContext.Shading.color(WelcomeStyle.signal)
+        switch anchor {
+        case .edge:
+            switch side {
+            case .right:
+                context.fill(Path(roundedRect: CGRect(x: screen.maxX - 4.5, y: screen.midY - 7, width: 4.5, height: 17),
+                                  cornerRadius: 2), with: warm)
+            case .left:
+                context.fill(Path(roundedRect: CGRect(x: screen.minX, y: screen.midY - 7, width: 4.5, height: 17),
+                                  cornerRadius: 2), with: warm)
+            case .bottom:
+                let dock = CGRect(x: screen.midX - 14, y: screen.maxY - 6, width: 20, height: 4)
+                context.fill(Path(roundedRect: dock, cornerRadius: 2), with: .color(.primary.opacity(0.22)))
+                context.fill(Path(roundedRect: CGRect(x: dock.maxX + 3, y: dock.minY, width: 11, height: 4),
+                                  cornerRadius: 2), with: warm)
+            }
+        case .notch:
+            context.fill(Path(roundedRect: CGRect(x: screen.midX - 9, y: screen.minY, width: 18, height: 6.5),
+                              cornerRadii: .init(bottomLeading: 3, bottomTrailing: 3)), with: warm)
+        case .pill:
+            context.fill(Path(roundedRect: CGRect(x: screen.maxX - 24, y: screen.minY + 10, width: 18, height: 6),
+                              cornerRadius: 3), with: warm)
+        case .orb:
+            context.fill(Path(ellipseIn: CGRect(x: screen.maxX - 15, y: screen.minY + 10, width: 8, height: 8)), with: warm)
+        case .menuBar:
+            for x in [screen.maxX - 22, screen.maxX - 16] {
+                context.fill(Path(ellipseIn: CGRect(x: x, y: screen.minY + 1.25, width: 2.5, height: 2.5)),
+                             with: .color(.primary.opacity(0.35)))
+            }
+            context.fill(Path(ellipseIn: CGRect(x: screen.maxX - 9.5, y: screen.minY + 0.75, width: 3.5, height: 3.5)), with: warm)
+        }
     }
 }

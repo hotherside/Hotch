@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController!
     private var settingsWindowController: SettingsWindowController!
     private var onboardingWindowController: OnboardingWindowController!
+    private let spotlight = OnboardingSpotlight()
+    private var placementPulse: DispatchWorkItem?
     private var storeObservation: Timer?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -80,17 +82,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                             store: store)
         onboardingWindowController = OnboardingWindowController(settings: settings)
         settingsWindowController.onShowWelcome = { [weak self] in
+            self?.spotlight.dismiss(animated: false)
             self?.onboardingWindowController.show()
         }
         settingsWindowController.onPreviewAlert = { [weak self] in self?.previewAlert() }
-        onboardingWindowController.onPreviewAlert = { [weak self] in self?.previewAlert() }
         onboardingWindowController.onOpenSettings = { [weak self] in self?.settingsWindowController.show() }
-        onboardingWindowController.onFinish = { [weak self] in
-            guard let self else { return }
-            // Only an explicit finish reveals the companion, keeping launch quiet.
-            if !self.anchors.isShown && self.statusItemController.popoverWindow == nil {
-                self.anchors.toggle()
-            }
+        onboardingWindowController.onExplainInstall = { InstallLocation.warnIfNotInstalled() }
+        onboardingWindowController.onPlacementChange = { [weak self] in self?.pulsePlacement() }
+        onboardingWindowController.onFinish = { [weak self] origin in
+            // Only an explicit finish points at the companion, keeping launch quiet.
+            self?.showWhereHotchLives(from: origin)
+        }
+        spotlight.isOpen = { [weak self] in
+            guard let self else { return false }
+            return self.anchors.isShown || self.statusItemController.popoverWindow != nil
         }
 
         statusItemController = StatusItemController(store: store,
@@ -303,13 +308,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Last, and only in the case that is actually broken: running from the
-        // disk image instead of Applications. Deferred by one turn of the run
-        // loop so the menu bar icon is already there to point at, and placed
-        // after welcome so the two never fight over the front window.
+        // disk image instead of Applications. Welcome says so in its letter
+        // rather than stacking an alert on the greeting; otherwise the alert
+        // is deferred by one turn of the run loop so the menu bar icon is
+        // already there to point at.
         if !InstallLocation.isProperlyInstalled {
             hotchLog.log("not installed: running from \(InstallLocation.bundlePath, privacy: .public)")
-            DispatchQueue.main.async {
-                InstallLocation.warnIfNotInstalled()
+            if !settings.shouldShowWelcome {
+                DispatchQueue.main.async {
+                    InstallLocation.warnIfNotInstalled()
+                }
             }
         }
     }
@@ -325,6 +333,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.anchors.present(activity, done: done)
             }
         }
+    }
+
+    /// Where the companion now rests, or the menu bar icon.
+    private var companionFrame: CGRect? {
+        anchors.restingFrame ?? (HotchPrefs.shared.anchor == .menuBar ? statusItemController.iconFrame : nil)
+    }
+
+    /// Placement changed during welcome: once the companion has moved (a new
+    /// side glides across), a brief ring shows where it went.
+    private func pulsePlacement() {
+        placementPulse?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let frame = self.companionFrame else { return }
+                self.spotlight.pulse(around: frame)
+            }
+        }
+        placementPulse = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + AnchorMotion.settle + 0.3, execute: work)
+    }
+
+    /// Welcome is done: the signal travels from the window to the companion
+    /// and a note says how to open it, instead of opening the card unasked.
+    private func showWhereHotchLives(from origin: CGRect) {
+        placementPulse?.cancel()
+        let prefs = HotchPrefs.shared
+        let target = companionFrame
+        let message = WelcomeCopy.whereItLives(prefs.anchor, side: prefs.edgeSide, realNotch: anchors.hasRealNotch,
+                                               iconVisible: prefs.anchor != .menuBar || target != nil)
+        spotlight.reveal(target: target, from: origin, message: message,
+                         shortcut: prefs.shortcutEnabled ? WelcomeCopy.shortcutHint : nil)
     }
 
     private func previewAlert() {

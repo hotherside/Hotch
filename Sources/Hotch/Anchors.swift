@@ -501,7 +501,8 @@ final class RailController {
         return CGRect(x: x, y: bottom, width: width, height: top - bottom)
     }
 
-    private var restingFrame: CGRect { frame(for: Self.size(for: .collapsed, side: state.side)) }
+    /// The resting tab or bar on screen. Welcome points at it when done.
+    var restingFrame: CGRect { frame(for: Self.size(for: .collapsed, side: state.side)) }
     private var openFrame: CGRect { frame(for: Self.size(for: .expanded, side: state.side)) }
 
     /// The speaking bubble on screen, beside the readout it is about (or,
@@ -2244,6 +2245,19 @@ final class AnchorManager {
     func changePage(by delta: Int) {
         if let notch { notch.changePage(by: delta) } else { card.deps.pages.change(by: delta) }
     }
+    /// Where the resting companion sits on screen, for welcome to point at.
+    /// Nil with "Menu bar only". On a screen without a notch the hover strip
+    /// is the whole menu bar, so a modest span at its centre stands in.
+    var restingFrame: CGRect? {
+        if let rail { return rail.restingFrame }
+        if let float { return float.panel.frame }
+        guard let notch, let geometry = notch.geometry ?? NotchGeometryResolver.geometries().first else { return nil }
+        if geometry.isRealNotch { return geometry.notchRect }
+        let width: CGFloat = 200
+        return CGRect(x: geometry.notchRect.midX - width / 2, y: geometry.notchRect.minY,
+                      width: width, height: geometry.notchRect.height)
+    }
+    var hasRealNotch: Bool { notch?.geometry?.isRealNotch ?? false }
     var cardWindow: NSWindow? { notch?.contentWindow ?? (card.isShown ? card.panel : nil) }
     var cardFrame: CGRect? { notch?.isExpanded == true ? notch?.panelFrame : (card.isShown ? card.frame : nil) }
 }
