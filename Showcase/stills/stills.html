@@ -1,0 +1,113 @@
+<!doctype html>
+<!--
+  Marketing stills, cropped from the real tour frames (Showcase/footage/frames,
+  5120 x 2880, 2 px per point). Open with ?shot=hero|split|notch|alert|homes|social
+  and render at 2x. Crops are in desktop points: (x, y, width) and a scale.
+-->
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  @font-face { font-family: "Inter"; src: url("../assets/fonts/inter-variable.woff2") format("woff2"); font-weight: 100 900; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #050507; color: #f5f5f7;
+    font-family: "Inter", sans-serif; font-variation-settings: "opsz" 32; -webkit-font-smoothing: antialiased; }
+  body.social { width: 1280px; height: 640px; }
+  .view { position: absolute; overflow: hidden; }
+  .view img { position: absolute; display: block; max-width: none; }
+  .copy { position: absolute; }
+  .eyebrow { font-weight: 600; font-size: 17px; letter-spacing: 0.2em; color: #ff8c66; font-variation-settings: "opsz" 14; }
+  h1 { font-weight: 680; font-size: 84px; line-height: 1.02; letter-spacing: -0.035em; }
+  h2 { font-weight: 660; font-size: 76px; line-height: 1.03; letter-spacing: -0.032em; }
+  .sub { margin-top: 24px; font-weight: 420; font-size: 30px; line-height: 1.38; letter-spacing: -0.012em;
+    color: rgba(245,245,247,0.66); font-variation-settings: "opsz" 20; }
+  .ink { color: #1d1d1f; }
+  .ink .sub { color: rgba(29,29,31,0.6); }
+  .shade { position: absolute; inset: 0; pointer-events: none; }
+  /* Bento */
+  .grid { position: absolute; left: 96px; top: 236px; width: 1728px; height: 772px; display: grid;
+    grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 22px; }
+  .tile { position: relative; border-radius: 26px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); }
+  .tile .view { inset: 0; }
+  .tile .label { position: absolute; z-index: 2; left: 24px; bottom: 22px; font-weight: 640; font-size: 26px; letter-spacing: -0.015em; }
+  .tile .label small { display: block; margin-top: 6px; font-weight: 420; font-size: 18px; color: rgba(245,245,247,0.66); letter-spacing: 0; }
+  .tile::after { content: ""; position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(180deg, rgba(5,5,7,0) 52%, rgba(5,5,7,0.7) 100%); }
+  .tile.top .label { top: 22px; bottom: auto; }
+  .tile.top::after { background: linear-gradient(0deg, rgba(5,5,7,0) 52%, rgba(5,5,7,0.7) 100%); }
+</style></head>
+<body>
+<script>
+  const shot = new URLSearchParams(location.search).get("shot") || "hero";
+  const F = "../footage/frames/";
+  // A window onto a frame: desktop points (x, y) at the top left, k CSS px per point.
+  function view(frame, x, y, k, box, extra = "") {
+    const img = `<img src="${F}${frame}.png" style="left:${-x * k}px;top:${-y * k}px;width:${2560 * k}px;height:${1440 * k}px">`;
+    return `<div class="view" style="${box}">${img}${extra}</div>`;
+  }
+  const b = document.body;
+  const add = (html) => b.insertAdjacentHTML("beforeend", html);
+
+  if (shot === "hero") {
+    add(view("dark-ai", 960, 150, 1.2, "inset:0"));
+    add(`<div class="shade" style="background:linear-gradient(90deg, rgba(5,5,7,0.94) 0%, rgba(5,5,7,0.82) 34%, rgba(5,5,7,0) 62%)"></div>`);
+    add(`<div class="copy" style="left:120px;top:300px;width:860px">
+      <div class="eyebrow">HOTCH FOR MAC</div>
+      <h1 style="margin-top:22px">Your AI limits and agents, at the edge of your screen.</h1>
+      <div class="sub" style="max-width:700px">Claude and Codex usage, every agent session and your Mac, a glance away. Free and open source.</div></div>`);
+  }
+
+  if (shot === "split") {
+    const x = 1138, y = 120, k = 1.35;
+    add(view("dark-sessions", x, y, k, "inset:0"));
+    add(view("light-sessions", x, y, k, "inset:0;clip-path:polygon(1790px 0, 1920px 0, 1920px 1080px, 1490px 1080px)"));
+    add(`<div class="shade" style="background:linear-gradient(90deg, rgba(5,5,7,0.9) 0%, rgba(5,5,7,0.6) 30%, rgba(5,5,7,0) 52%)"></div>`);
+    add(`<div class="shade" style="left:1782px;width:16px;transform:skewX(-15.5deg);transform-origin:0 0;
+      background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,244,236,0.85), rgba(255,255,255,0))"></div>`);
+    add(`<div class="copy" style="left:120px;bottom:130px;width:760px"><h2>Light or dark.</h2>
+      <div class="sub">Hotch follows your Mac's appearance, down to the tab.</div></div>`);
+  }
+
+  if (shot === "notch") {
+    add(view("dark-notch", 569, 0, 1.35, "inset:0"));
+    add(`<div class="shade" style="background:linear-gradient(90deg, rgba(5,5,7,0.92) 0%, rgba(5,5,7,0.7) 22%, rgba(5,5,7,0) 40%), radial-gradient(85% 70% at 0% 100%, rgba(5,5,7,0.85) 0%, rgba(5,5,7,0.4) 45%, rgba(5,5,7,0) 72%)"></div>`);
+    add(`<div class="copy" style="left:120px;bottom:120px;width:900px"><h2>Where it all started.</h2>
+      <div class="sub">The original notch view, still here on your MacBook.</div></div>`);
+  }
+
+  if (shot === "alert") {
+    add(view("light-alert", 1493, 230, 1.8, "inset:0"));
+    add(`<div class="shade" style="background:radial-gradient(90% 75% at 0% 100%, rgba(250,247,244,0.92) 0%, rgba(250,247,244,0.55) 42%, rgba(250,247,244,0) 72%)"></div>`);
+    add(`<div class="copy ink" style="left:120px;bottom:120px;width:980px"><h2>It taps you when it matters.</h2>
+      <div class="sub">Alerts grow out of the tab. Click one to jump to the session.</div></div>`);
+  }
+
+  if (shot === "homes") {
+    add(`<div class="copy" style="left:96px;top:84px"><h2 style="font-size:68px">Wherever you work.</h2>
+      <div class="sub" style="margin-top:14px;font-size:27px">Six homes, one companion. Switch any time in Settings.</div></div>`);
+    const tiles = [
+      ["dark-ai", 1655, 300, 0.62, "Screen edge", "A tab with three live readouts"],
+      ["dark-notch", 813, 0, 0.6, "Notch", "Where Hotch began"],
+      ["dark-pill", 1860, 0, 0.8, "Menu bar", "One glyph and a number",
+        `<img src="${F}menubar-card.png" style="left:${561 - 24 - 216}px;top:${36}px;width:216px;height:307px;filter:drop-shadow(0 16px 30px rgba(0,0,0,0.45))">`],
+      ["dark-pill", 2090, 440, 1.2, "Floating pill", "Usage, sessions, Mac and Focus"],
+      ["dark-orb", 2090, 425, 1.2, "Orb", "The smallest home"],
+      ["dark-dock", 742, 973, 0.8, "Beside the Dock", "Out of the way, still in view", "", true],
+    ];
+    add(`<div class="grid">${tiles.map(([f, x, y, k, t, s, extra, top]) =>
+      `<div class="tile${top ? " top" : ""}">${view(f, x, y, k, "inset:0", extra || "")}<div class="label">${t}<small>${s}</small></div></div>`).join("")}</div>`);
+  }
+
+  if (shot === "social") {
+    b.className = "social";
+    b.style.background = "radial-gradient(70% 90% at 78% 50%, rgba(255,140,102,0.16), transparent 70%), #050507";
+    add(`<div class="view" style="left:690px;top:70px;width:520px;height:500px;border-radius:22px;
+      box-shadow:0 0 0 1px rgba(255,255,255,0.1), 0 40px 90px rgba(0,0,0,0.6)">
+      <img src="${F}dark-ai.png" style="left:${-2060 * 1.04}px;top:${-300 * 1.04}px;width:${2560 * 1.04}px;height:${1440 * 1.04}px"></div>`);
+    add(`<div class="copy" style="left:72px;top:150px;width:560px">
+      <div style="display:flex;align-items:center;gap:20px">
+        <svg viewBox="21 10 54 80" style="width:46px;height:68px"><path d="M60 16 C17 21 17 79 60 84" fill="none" stroke="#f7f5ed" stroke-width="12" stroke-linecap="round"/><circle cx="65" cy="50" r="10" fill="#ff8c66"/></svg>
+        <div style="font-weight:700;font-size:84px;letter-spacing:-0.045em;line-height:1">Hotch</div></div>
+      <div class="sub" style="margin-top:28px;font-size:30px;color:rgba(245,245,247,0.78)">AI limits and agents, at the edge of your screen.</div>
+      <div style="margin-top:22px;font-weight:540;font-size:20px;color:#ff8c66;font-variation-settings:'opsz' 16">Free and open source for macOS</div></div>`);
+  }
+</script>
+</body></html>

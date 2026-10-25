@@ -1,30 +1,27 @@
-# Review: Hotch showcase
+# Review: Hotch reel
 
 ## Creative calls
 
-- One continuous desktop at 2x, so every piece of Hotch shows at the size it reads in the app.
-  All Hotch UI is the app's own render (`Hotch --snapshot-parts --snapshot-dark`), sample data
-  with neutral session names. The Dock tiles and the menu bar are plain stand-ins; the menu bar's
-  status item redraws Hotch's glyph.
-- The card hangs from a fixed top beside the tab and resizes downward, the way 2.2.0 attaches it.
-  Resting on a readout opens that readout's section (the app's dwell behaviour), so the walk opens
-  on AI, then clicks the Sessions readout and the card's Mac tab to show both ways to switch.
-- Captions carry the story because a GIF has no sound. The homes beat uses a rolling last word.
-- The end card redraws the app icon's companion curve and warm signal from `HotchIcon.swift`.
-- Not built: a cut that shows the session's app coming forward after the alert click (no real
-  screen of that app to show), the Now, Focus and Clipboard sections (the README's native tour
-  covers them), and the Notch and menu bar homes.
+- Real motion over imitation: the card's spring, page changes, alert bubbles, the notch panel and
+  the homes are the app's own animation, recorded with `--demo-tour`. Only the cursor and camera
+  are added, and the cursor lands where the tour acts at the moment it acts.
+- Two takes with the same timing (within about 30 ms) make the light and dark sweep possible
+  across a live card, rather than a crossfade between stills.
+- The desktop is drawn, not photographed: no Apple hardware, a stand-in notch, a neutral Dock with
+  Hotch first. Apple's product images are licensed for App Store apps only.
+- Inter Display instead of SF Pro, whose licence covers interface mock-ups, not marketing type.
 
 ## What was measured, what was only looked at
 
-- `check`: 0 errors. Kept warnings: `film_silent` (a GIF carries no sound, by design);
-  `timeline_track_too_dense` (six captions on one track in the walk scene, readable as is).
-  Menu bar text is 26 px at 2x and marked `data-layout-ignore` as texture.
-- Looked at frames 1.9, 2.3, 3.4, 5.0, 5.06, 6.0, 7.6, 9.62, 10.4, 11.2, 14.0, 15.6, 16.0, 17.4
-  and 20.4, and at GIF frames 7.6 and 15.0 at 1280 px.
-- Not checked: the GIF on a phone.
+- `check`: 0 errors. Kept warnings: `film_silent` (no licensed music yet);
+  `nested_structure_needs_subcomposition` (captions stay in the root so one clock drives camera,
+  sweep and cursor). Contrast 7/7 WCAG AA.
+- Looked at snapshots at 1.0, 2.9, 3.4, 4.2, 6.6, 10.1, 11.6, 13.45, 14.4, 17.0, 22.3, 25.65, 29.6,
+  35.2, 40.6, 43.6, 47.0, 48.6, 48.7, 49.4 and 51.6 s, and at frames 7.0, 13.5 and 29.8 s of the
+  rendered MP4.
+- Not checked: the reel with music, and the GIF on a phone.
 
 ## Weakest shot
 
-The alert click at 10.75 s: the bubble retracts and the caption says what happens, but nothing on
-screen shows the session's app coming forward. With a real screenshot of that moment it would land.
+The alert click at 24.75 s still ends with the bubble retracting and no app coming forward,
+because the tour does not switch apps. A cut to the terminal would land it.

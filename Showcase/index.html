@@ -1,148 +1,290 @@
 <!doctype html>
-<html
-  lang="en"
-  data-composition-variables='[
-    {"id":"color-ground","type":"color","label":"Desktop","default":"#2B2533"},
-    {"id":"color-ink","type":"color","label":"Text","default":"#F4F2FA"},
-    {"id":"color-accent","type":"color","label":"Accent","default":"#F5A524"}
-  ]'
->
+<!--
+  Hotch reel: the real app, recorded with `Hotch --demo-tour` in a dark and a
+  light take, composited onto the desktop in plates/desktop.html, then framed
+  here. One camera moves both takes; a sweep between them shows light and dark.
+
+  Footage (Showcase/footage, not in Git) is rebuilt with the steps in README.md.
+  Desktop coordinates below are points on the 2560 x 1440 recording; the
+  footage is 1.5 px per point.
+-->
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
-      :root {
-        --color-ground: #2b2533;
-        --color-ink: #f4f2fa;
-        --color-accent: #f5a524;
+      @font-face {
+        font-family: "Inter";
+        src: url("assets/fonts/inter-variable.woff2") format("woff2");
+        font-weight: 100 900;
       }
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      html,
-      body {
-        margin: 0;
-        width: 1920px;
-        height: 1080px;
-        overflow: hidden;
-        background: var(--color-ground);
-      }
-      #root {
-        position: relative;
-        width: 100%;
-        height: 100%;
-      }
-      /* The desktop: a solid ground with radial washes (linear gradients band in video). */
-      #desktop {
-        position: absolute;
-        inset: 0;
-        background:
-          radial-gradient(circle at 0% 0%, rgba(34, 42, 68, 0.85), transparent 60%),
-          radial-gradient(circle at 24% 74%, rgba(242, 140, 77, 0.38), transparent 34%),
-          radial-gradient(circle at 80% 26%, rgba(64, 191, 217, 0.26), transparent 30%),
-          var(--color-ground);
-      }
-      #menubar {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 1920px;
-        height: 48px;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 30px;
-        padding: 0 32px;
-        background: rgba(12, 10, 20, 0.4);
-        font: 500 26px/1 "Inter", sans-serif;
-        color: var(--color-ink);
-        font-variant-numeric: tabular-nums;
-      }
-      #menubar .status {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 5px 12px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.14);
-      }
-      #menubar svg {
-        width: 18px;
-        height: 26px;
-      }
-      #menubar .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--color-accent);
-      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #050507; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #050507;
+        font-family: "Inter", sans-serif; font-variation-settings: "opsz" 32; -webkit-font-smoothing: antialiased; }
+
+      /* Two takes under one camera. The light take is revealed by a sweep. */
+      .layer { position: absolute; inset: 0; }
+      #light-layer { --a: -400px; --b: -400px;
+        clip-path: polygon(var(--a) 0, var(--b) 0, calc(var(--b) - 300px) 100%, calc(var(--a) - 300px) 100%); }
+      .cam { position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; transform-origin: 0 0; }
+      .screen { position: absolute; inset: 0; border-radius: 36px; overflow: hidden; }
+      #root .screen img, #root .screen video { position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; display: block; }
+      #screen-shadow { position: absolute; inset: 0; border-radius: 36px;
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.10), 0 60px 160px rgba(0,0,0,0.6); }
+      #sweep { position: absolute; left: 0; top: -40px; width: 240px; height: 1160px; transform-origin: 50% 0;
+        background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,244,236,0.55) 50%, rgba(255,255,255,0));
+        mix-blend-mode: screen; opacity: 0; }
+
+      #cursor { position: absolute; left: 0; top: 0; width: 27px; height: 40px; overflow: visible;
+        filter: drop-shadow(0 3px 4px rgba(0,0,0,0.35)); opacity: 0; }
+
+      /* Captions: Inter Display, lower left, on a soft scrim. */
+      .scrim { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+      #scrim-dark { background: radial-gradient(90% 75% at 0% 100%, rgba(6,5,10,0.78) 0%, rgba(6,5,10,0.45) 40%, rgba(6,5,10,0) 72%); }
+      #scrim-light { background: radial-gradient(90% 75% at 0% 100%, rgba(250,247,244,0.88) 0%, rgba(250,247,244,0.5) 40%, rgba(250,247,244,0) 72%); }
+      #scrim-top { background: radial-gradient(90% 75% at 0% 0%, rgba(6,5,10,0.72) 0%, rgba(6,5,10,0.4) 40%, rgba(6,5,10,0) 72%); }
+      #root .cap { position: absolute; left: 112px; bottom: 112px; width: 980px; }
+      #root .cap.top { bottom: auto; top: 104px; }
+      .cap h2 { font-weight: 640; font-size: 68px; line-height: 1.04; letter-spacing: -0.03em; color: #f5f5f7; }
+      .cap p { margin-top: 18px; font-weight: 420; font-size: 29px; line-height: 1.36; letter-spacing: -0.012em;
+        color: rgba(245,245,247,0.68); max-width: 760px; font-variation-settings: "opsz" 20; }
+      .cap.ink h2 { color: #1d1d1f; }
+      .cap.ink p { color: rgba(29,29,31,0.62); }
+      .cap .w { display: inline-block; }
+      .roll { position: relative; display: block; height: 72px; overflow: hidden; }
+      .roll .stack { position: absolute; left: 0; top: 0; }
+      .roll .stack span { display: block; height: 72px; line-height: 70px; color: #f5a524; }
+
+      /* Title and end cards: plain type on black. */
+      #root .card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        text-align: center; color: #f5f5f7; }
+      #title h1 { font-weight: 680; font-size: 112px; letter-spacing: -0.04em; line-height: 1; }
+      #title p { margin-top: 26px; font-weight: 420; font-size: 34px; letter-spacing: -0.015em; color: rgba(245,245,247,0.62);
+        font-variation-settings: "opsz" 24; }
+      #fade { position: absolute; inset: 0; opacity: 0;
+        background: radial-gradient(60% 55% at 50% 46%, rgba(255,140,102,0.10), transparent 70%), #050507; }
+      #end .lockup { display: flex; align-items: center; gap: 30px; }
+      #end svg { width: 76px; height: 112px; overflow: visible; }
+      #end .word { font-weight: 700; font-size: 128px; letter-spacing: -0.045em; line-height: 1; }
+      #end .line { margin-top: 34px; font-weight: 440; font-size: 36px; letter-spacing: -0.015em; color: rgba(245,245,247,0.72);
+        font-variation-settings: "opsz" 24; }
+      #end .url { margin-top: 16px; font-weight: 500; font-size: 30px; letter-spacing: 0; color: #ff8c66;
+        font-variation-settings: "opsz" 18; }
     </style>
   </head>
   <body>
-    <div data-hf-id="hf-xw3d"
-      id="root"
-      data-composition-id="main"
-      data-start="0"
-      data-duration="21.2"
-      data-width="1920"
-      data-height="1080"
-    >
-      <div data-hf-id="hf-nuev" id="desktop">
-        <div data-hf-id="hf-xr4o" id="menubar" data-layout-ignore>
-          <span data-hf-id="hf-761c" class="status">
-            <svg data-hf-id="hf-vig5" viewBox="21 10 54 80" aria-hidden="true">
-              <path data-hf-id="hf-hbei" d="M60 16 C17 21 17 79 60 84" fill="none" stroke="currentColor" stroke-width="13" stroke-linecap="round" />
-              <circle data-hf-id="hf-6ov2" cx="65" cy="50" r="11" fill="currentColor" />
-            </svg>
-            <i data-hf-id="hf-6bgx" class="dot"></i>63%
-          </span>
-          <span data-hf-id="hf-ndxo">Thu 9:41</span>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="53" data-width="1920" data-height="1080">
+
+      <div class="layer" id="dark-layer">
+        <div class="cam" data-layout-allow-overflow>
+          <div id="screen-shadow"></div>
+          <div class="screen">
+            <img src="footage/plate-dark.jpg" alt="" />
+            <video id="dark-1" class="clip" src="footage/desk-dark.mp4" muted data-start="3.6" data-duration="16.9" data-media-start="0"></video>
+            <video id="dark-2" class="clip" src="footage/desk-dark.mp4" muted data-start="20.5" data-duration="13.4" data-media-start="17.5"></video>
+            <video id="dark-3" class="clip" src="footage/desk-dark.mp4" muted data-start="33.9" data-duration="4.7" data-media-start="31.7"></video>
+            <video id="dark-4" class="clip" src="footage/desk-dark.mp4" muted data-start="38.6" data-duration="3.3" data-media-start="37.6"></video>
+            <video id="dark-5" class="clip" src="footage/desk-dark.mp4" muted data-start="41.9" data-duration="3.3" data-media-start="42.9"></video>
+            <video id="dark-6" class="clip" src="footage/desk-dark.mp4" muted data-start="45.2" data-duration="4.4" data-media-start="48.2"></video>
+          </div>
         </div>
       </div>
 
-      <div data-hf-id="hf-32rz"
-        id="walk"
-        data-composition-id="walk"
-        data-composition-src="compositions/walk.html"
-        data-start="0"
-        data-duration="13.4"
-        data-track-index="1"
-        data-track-kind="graphics"
-        data-width="1920"
-        data-height="1080"
-        style="z-index: 2"
-      ></div>
-      <div data-hf-id="hf-73hx"
-        id="homes"
-        data-composition-id="homes"
-        data-composition-src="compositions/homes.html"
-        data-start="13.1"
-        data-duration="4.8"
-        data-track-index="2"
-        data-track-kind="graphics"
-        data-width="1920"
-        data-height="1080"
-        style="z-index: 3"
-      ></div>
-      <div data-hf-id="hf-e8rp"
-        id="end"
-        data-composition-id="end"
-        data-composition-src="compositions/end.html"
-        data-start="17.6"
-        data-duration="3.6"
-        data-track-index="3"
-        data-track-kind="graphics"
-        data-width="1920"
-        data-height="1080"
-        style="z-index: 4"
-      ></div>
+      <div class="layer" id="light-layer">
+        <div class="cam" data-layout-allow-overflow>
+          <div class="screen">
+            <img src="footage/plate-light.jpg" alt="" />
+            <video id="light-1" class="clip" src="footage/desk-light.mp4" muted data-start="3.6" data-duration="16.9" data-media-start="0"></video>
+            <video id="light-2" class="clip" src="footage/desk-light.mp4" muted data-start="20.5" data-duration="13.4" data-media-start="17.5"></video>
+            <video id="light-3" class="clip" src="footage/desk-light.mp4" muted data-start="41.9" data-duration="3.3" data-media-start="42.9"></video>
+          </div>
+        </div>
+      </div>
+      <div id="sweep"></div>
+
+      <div class="layer">
+        <div class="cam" id="cursor-cam" data-layout-allow-overflow>
+          <svg id="cursor" viewBox="0 0 24 36" aria-hidden="true">
+            <path id="cursor-path" d="M2 2 L2 28 L8.5 22 L13 32.5 L17 30.8 L12.6 20.6 L21 20.6 Z" fill="#111" stroke="#fff" stroke-width="2" stroke-linejoin="round" />
+          </svg>
+        </div>
+      </div>
+
+      <div class="scrim" id="scrim-dark"></div>
+      <div class="scrim" id="scrim-light"></div>
+      <div class="scrim" id="scrim-top"></div>
+
+      <div id="title" class="card clip" data-start="0" data-duration="3.4">
+        <h1><span class="w">Meet</span> <span class="w">Hotch.</span></h1>
+        <p>AI limits and agents, at the edge of your screen.</p>
+      </div>
+
+      <div id="c-ai" class="cap clip" data-start="5.75" data-duration="4.4"><h2>AI limits, at a glance.</h2><p>Claude and Codex usage, resets and a forecast.</p></div>
+      <div id="c-ses" class="cap clip" data-start="10.5" data-duration="2.6"><h2>Every agent, live.</h2><p>Which one is working, and which needs you.</p></div>
+      <div id="c-theme" class="cap ink clip" data-start="13.3" data-duration="1.75"><h2>Light or dark.</h2></div>
+      <div id="c-mac" class="cap ink clip" data-start="15.3" data-duration="4.3"><h2>Your Mac, too.</h2><p>CPU, memory, temperatures and power, every second.</p></div>
+      <div id="c-alert" class="cap ink clip" data-start="20.95" data-duration="3.95"><h2>It taps you when it matters.</h2><p>Click an alert to jump straight to the session.</p></div>
+      <div id="c-notch" class="cap clip" data-start="28.3" data-duration="4.8"><h2>Where it all started.</h2><p>The original notch view, still here on your MacBook.</p></div>
+      <div id="c-wing" class="cap clip" data-start="34.3" data-duration="4.1"><h2>Right where you look.</h2><p>Alerts slide out from the notch.</p></div>
+      <div id="c-homes" class="cap top clip" data-start="38.7" data-duration="10.1" data-layout-allow-occlusion>
+        <h2>Or keep it<span class="roll" data-layout-allow-overlap data-layout-allow-overflow><span class="stack"><span>as a pill.</span><span>as an orb.</span><span>beside the Dock.</span></span></span></h2>
+      </div>
+
+      <div id="fade"></div>
+      <div id="end" class="card clip" data-start="48.9" data-duration="4.1">
+        <div class="lockup">
+          <svg viewBox="21 10 54 80" aria-hidden="true">
+            <path id="e-curve" d="M60 16 C17 21 17 79 60 84" fill="none" stroke="#f7f5ed" stroke-width="12" stroke-linecap="round"
+              pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" />
+            <circle id="e-signal" cx="65" cy="50" r="10" fill="#ff8c66" />
+          </svg>
+          <div class="word">Hotch</div>
+        </div>
+        <div class="line">Free and open source for macOS.</div>
+        <div class="url">github.com/hotherside/Hotch</div>
+      </div>
     </div>
+
     <script>
-      window.__timelines = window.__timelines || {};
-      window.__timelines["main"] = gsap.timeline({ paused: true });
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        const P = 1.5; // footage pixels per desktop point
+        const cams = ".layer .cam";
+
+        // Frame desktop point (x, y) at the centre of the shot, at scale s of the footage.
+        const frame = (s, x, y) => ({ scale: s, x: 960 - x * P * s, y: 540 - y * P * s });
+        const cam = (t, s, x, y, duration, ease) =>
+          tl.to(cams, { ...frame(s, x, y), duration, ease: ease || "power3.inOut" }, t);
+        const cut = (t, s, x, y) => tl.set(cams, frame(s, x, y), t);
+
+        // Cursor, in footage pixels.
+        const at = (x, y) => ({ x: x * P, y: y * P });
+        const move = (t, x, y, duration) => tl.to("#cursor", { ...at(x, y), duration: duration || 0.6, ease: "power2.inOut" }, t);
+        const press = (t) => {
+          tl.to("#cursor", { scale: 0.86, transformOrigin: "8% 6%", duration: 0.06, ease: "power2.in" }, t);
+          tl.to("#cursor", { scale: 1, duration: 0.1, ease: "power2.out" }, t + 0.06);
+        };
+
+        // Captions in and out.
+        const capIn = (sel, t) => {
+          tl.fromTo(`${sel} h2`, { opacity: 0, y: 14, filter: "blur(6px)" },
+            { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.42, ease: "expo.out" }, t);
+          if (document.querySelector(sel + " p")) {
+            tl.fromTo(`${sel} p`, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.42, ease: "expo.out" }, t + 0.1);
+          }
+        };
+        // Timed elements keep their own opacity, so fades act on what is inside them.
+        const capOut = (sel, t) => tl.to(`${sel} > *`, { opacity: 0, filter: "blur(6px)", duration: 0.22, ease: "power2.in" }, t);
+        const scrim = (sel, t, on) => tl.to(sel, { opacity: on ? 1 : 0, duration: 0.4, ease: "power2.inOut" }, t);
+
+        // Sweep between takes, in screen space. Edge `--b` reveals light, `--a` returns to dark.
+        const sweep = (t, edge, duration) => {
+          tl.to("#light-layer", { [edge]: "2420px", duration, ease: "power2.inOut" }, t);
+          tl.fromTo("#sweep", { x: -520, skewX: -15.5, opacity: 0.9 },
+            { x: 2300, skewX: -15.5, duration, ease: "power2.inOut" }, t);
+          tl.set("#sweep", { opacity: 0 }, t + duration);
+        };
+        const light = (t, on) => tl.set("#light-layer", on ? { "--a": "-400px", "--b": "2420px" } : { "--a": "-400px", "--b": "-400px" }, t);
+
+        // 0 to 3.6: title on black, then the screen rises into place.
+        tl.fromTo(cams, { ...frame(0.42, 1280, 720), y: 1200 },
+          { ...frame(0.42, 1280, 720), duration: 1.0, ease: "expo.out" }, 2.65);
+        tl.fromTo("#title h1 .w", { opacity: 0, y: 18, filter: "blur(10px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.6, stagger: 0.12, ease: "expo.out" }, 0.15);
+        tl.fromTo("#title p", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: "expo.out" }, 0.55);
+        tl.to("#title > *", { opacity: 0, y: -40, duration: 0.5, ease: "power3.in" }, 2.85);
+
+        // Fill the frame as the tab appears (3.6), then push in on the edge.
+        cam(3.75, 0.5, 1280, 720, 0.9, "power2.inOut");
+        cam(4.65, 0.95, 1890, 560, 1.1);
+
+        // The cursor rests on the Claude readout; the card opens on AI (5.73).
+        tl.set("#cursor", { ...at(1700, 1250), opacity: 1 }, 4.4);
+        move(4.6, 2537, 397, 0.9);
+        scrim("#scrim-dark", 5.6, true);
+        capIn("#c-ai", 5.85);
+        capOut("#c-ai", 9.95);
+
+        // Sessions (10.45): a click on its readout.
+        move(9.85, 2537, 441, 0.45);
+        press(10.38);
+        capIn("#c-ses", 10.6);
+        capOut("#c-ses", 12.9);
+
+        // Light or dark: the sweep crosses the open card.
+        sweep(13.0, "--b", 1.0);
+        scrim("#scrim-dark", 13.1, false);
+        scrim("#scrim-light", 13.2, true);
+        capIn("#c-theme", 13.4);
+        capOut("#c-theme", 14.85);
+
+        // This Mac (15.18): a click on the card's own tab bar.
+        move(14.4, 2354, 358, 0.55);
+        press(15.1);
+        capIn("#c-mac", 15.4);
+        capOut("#c-mac", 19.4);
+
+        // The pointer leaves; the card closes (19.91). The idle beat is cut at 20.5.
+        move(19.0, 2050, 760, 0.6);
+        cam(19.6, 1.0, 1920, 500, 0.9);
+
+        // The alert grows out of the tab (20.89); a click retracts it (24.9).
+        capIn("#c-alert", 21.05);
+        move(23.5, 2380, 440, 0.6);
+        press(24.75);
+        capOut("#c-alert", 24.7);
+
+        // Back to dark, and up to the notch (26.14), where the panel opens on hover (28.25).
+        sweep(25.2, "--a", 0.85);
+        scrim("#scrim-light", 25.25, false);
+        light(26.1, false);
+        cam(25.4, 1.0, 1280, 360, 1.5);
+        move(25.6, 1600, 520, 1.0);
+        move(27.3, 1286, 18, 0.8);
+        scrim("#scrim-dark", 27.9, true);
+        capIn("#c-notch", 28.4);
+        move(32.6, 1700, 700, 0.7);
+        capOut("#c-notch", 32.9);
+
+        // The notch speaks (34.27).
+        tl.to("#cursor", { opacity: 0, duration: 0.25 }, 33.4);
+        capIn("#c-wing", 34.45);
+        capOut("#c-wing", 38.2);
+        scrim("#scrim-dark", 38.2, false);
+
+        // Homes: a pill (dark), an orb (light), beside the Dock (dark).
+        cut(38.6, 1.0, 1920, 600);
+        scrim("#scrim-top", 38.6, true);
+        tl.fromTo("#c-homes h2", { opacity: 0, y: 14, filter: "blur(6px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.42, ease: "expo.out" }, 38.7);
+        tl.to("#c-homes .stack", { y: -72, duration: 0.34, ease: "power3.inOut" }, 41.8);
+        light(41.9, true);
+        tl.set("#c-homes", { attr: { class: "cap top clip ink" } }, 41.9);
+        tl.set("#scrim-top", { background: "radial-gradient(90% 75% at 0% 0%, rgba(250,247,244,0.88) 0%, rgba(250,247,244,0.5) 40%, rgba(250,247,244,0) 72%)" }, 41.9);
+        tl.to("#c-homes .stack", { y: -144, duration: 0.34, ease: "power3.inOut" }, 45.1);
+        light(45.2, false);
+        tl.set("#c-homes", { attr: { class: "cap top clip" } }, 45.2);
+        tl.set("#scrim-top", { background: "radial-gradient(90% 75% at 0% 0%, rgba(6,5,10,0.72) 0%, rgba(6,5,10,0.4) 40%, rgba(6,5,10,0) 72%)" }, 45.2);
+        cut(45.2, 1.0, 1250, 1080);
+        capOut("#c-homes", 48.6);
+        scrim("#scrim-top", 48.5, false);
+
+        // Pull back to the whole screen, then the end card.
+        cam(47.9, 0.42, 1280, 720, 1.3, "power3.inOut");
+        tl.to("#fade", { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 48.95);
+        tl.fromTo("#e-curve", { attr: { "stroke-dashoffset": 100 } },
+          { attr: { "stroke-dashoffset": 0 }, duration: 0.55, ease: "power2.inOut" }, 49.25);
+        tl.fromTo("#e-signal", { scale: 0, transformOrigin: "50% 50%" },
+          { scale: 1, duration: 0.32, ease: "back.out(2)" }, 49.7);
+        tl.fromTo("#end .word", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.5, ease: "expo.out" }, 49.75);
+        tl.fromTo("#end .line", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "expo.out" }, 50.1);
+        tl.fromTo("#end .url", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, 50.35);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
     </script>
   </body>
 </html>

@@ -2,24 +2,26 @@
 workflow: general-video
 flow: automation
 storyboard: no
-message: "Hotch keeps your AI limits, sessions and Mac on the edge of the screen, and taps you when an agent needs you"
-destination: README hero and sharing
+message: "Hotch keeps your AI limits, agents and Mac at the edge of your screen, in light or dark, and taps you when an agent needs you"
+destination: README hero, marketing and social
 aspect: "16:9"
-length: "about 21 s"
-output: GIF (1280 wide, loops) plus MP4
+length: "about 53 s"
+output: MP4 (1080p, 60 fps), README GIF of the first act, marketing stills
 ---
 
 ## Intent
 
-Walkthrough + homes. The tab rests on the edge, the cursor rests on the Claude readout and the card
-opens on AI, a click on the Sessions readout and one on the card's Mac tab switch sections, an alert
-grows out of the tab and gets clicked, then a quick pass of the pill, orb and the Dock-side bar.
+Real motion, Apple-like typography. The app is recorded doing its own animations (`--demo-tour`)
+in a dark and a light take, then framed with a slow camera: the tab and card (AI, Sessions, This
+Mac) with a sweep from dark to light across the open card, an alert, the original notch view and
+its alert, then the pill, orb and Dock homes, and an end card.
 
 ## Assets
 
-Real renders of Hotch 2.2.0 (`Hotch --snapshot-parts --snapshot-dark`, usage shown as used),
-sample data with neutral session names.
+Real recordings of Hotch 2.2.0 on demo data with fictional session names. Stand-in desktop:
+generated dusk and morning wallpapers, a Tahoe-style menu bar, a terminal, a neutral Dock and a
+14" MacBook Pro notch. No Apple hardware is drawn. Type: Inter (OFL).
 
 ## Notes
 
-Inferred: dark appearance, 2x scale desktop crop, silent (GIF), captions in place of narration.
+Silent until a licensed music track is chosen. Captions carry the story.

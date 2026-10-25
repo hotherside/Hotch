@@ -6,7 +6,10 @@ import Foundation
 /// the display direction, so each file has one job.
 @MainActor
 final class HotchPrefs: ObservableObject {
-    static let shared = HotchPrefs()
+    /// A demo tour keeps its placements in a scratch domain instead of the
+    /// person's own. Set before anything reads `shared`; the app never sets it.
+    nonisolated(unsafe) static var defaultsOverride: UserDefaults?
+    static let shared = HotchPrefs(defaults: defaultsOverride ?? .standard)
 
     private let defaults: UserDefaults
 

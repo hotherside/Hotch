@@ -94,6 +94,9 @@ enum NotchGeometryResolver {
     }
     /// A virtual notch reserves one compact clock row, so running Focus stays
     /// visible above the tabs even on an external display.
+    /// Notch hardware for `--demo-tour` (width and height in points). The app
+    /// never sets it.
+    nonisolated(unsafe) static var simulatedNotch: CGSize?
     static let virtualClearance: CGFloat = 28
     static let virtualNotchWidth: CGFloat = 220
     static let fallbackNotchWidth: CGFloat = 200
@@ -134,6 +137,17 @@ enum NotchGeometryResolver {
     /// stay for callers that only ever mean provider rows.
     static func geometry(for screen: NSScreen, contentHeight: CGFloat) -> NotchGeometry {
         let frame = screen.frame
+
+        // A demo tour stands in notch hardware on any display, so the panel and
+        // its wings draw exactly as they do on a MacBook Pro.
+        if let simulated = simulatedNotch {
+            let notch = CGRect(x: frame.midX - simulated.width / 2,
+                               y: frame.maxY - simulated.height,
+                               width: simulated.width,
+                               height: simulated.height)
+            return assemble(screenFrame: frame, notch: notch, clearance: simulated.height,
+                            contentHeight: contentHeight, isReal: true)
+        }
 
         if screen.safeAreaInsets.top > 0 {
             var width = fallbackNotchWidth

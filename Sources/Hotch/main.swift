@@ -223,6 +223,14 @@ if npArguments.contains("--snapshot") {
     }
 }
 
+// Plays a fixed tour of the real anchors on demo data, for screen recordings.
+if npArguments.contains("--demo-tour") {
+    MainActor.assumeIsolated {
+        DemoTour.runAndExit(dark: npArguments.contains("--snapshot-dark"),
+                            waitForCue: !npArguments.contains("--demo-tour-now"))
+    }
+}
+
 let app = NSApplication.shared
 
 MainActor.assumeIsolated {

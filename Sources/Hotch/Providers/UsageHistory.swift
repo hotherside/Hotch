@@ -31,7 +31,10 @@ struct BurnForecast: Sendable {
 /// a decode failure must never stop the app from starting, so anything
 /// unreadable is dropped and history simply begins again.
 final class UsageHistoryStore: @unchecked Sendable {
-    static let shared = UsageHistoryStore()
+    /// A demo tour's fixture history, so its forecasts never come from the
+    /// person's own file. Set before anything reads `shared`; the app never sets it.
+    nonisolated(unsafe) static var sharedOverride: UsageHistoryStore?
+    static let shared = sharedOverride ?? UsageHistoryStore()
 
     /// New samples closer together than this are noise: the vendor numbers move
     /// in whole percent steps and the refresh floor is 60s anyway.

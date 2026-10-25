@@ -41,9 +41,9 @@ These commands use injected demo data without requesting provider usage:
 .build/release/Hotch --snapshot-overview build/overview.png --snapshot-dark
 .build/release/Hotch --snapshot-overview build/stale.png --snapshot-dark --snapshot-fixture stale
 .build/release/Hotch --snapshot-story build/story --snapshot-dark --display-mode remaining
-swift tools/render-demo.swift build/story docs/images/native-tour.gif
+swift tools/render-demo.swift build/story docs/marketing/screenshots/native-tour.gif
 ```
 
 Available fixtures: `rich`, `empty`, `stale`, `disconnected`, `highpressure`, `needsinput`. Omit `--snapshot-dark` for light mode. Use `--snapshot-page now|ai|agents|mac|focus|clipboard` to select an overview page. Keep screenshots free of real sessions, clipboard text and account details.
 
-The animated README showcase is built from `--snapshot-parts` renders; [Showcase/README.md](Showcase/README.md) describes how to refresh and render it.
+`Hotch --demo-tour` runs the real app on the same demo data and plays a fixed sequence for screen recordings; it keeps its placements in a scratch preferences domain and never touches yours. The README reel is recorded from it with `tools/record-tour.swift`; [Showcase/README.md](Showcase/README.md) describes the whole pipeline.

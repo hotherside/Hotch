@@ -2,9 +2,9 @@
 
 Hotch is a native macOS companion for a glance at AI plan usage, active Claude Code and Codex work, and Mac activity. Keep it on a screen edge, by the Dock, around the notch, floating on your desktop, or in the menu bar. It is built with Swift and SwiftUI, targets macOS 14 or later, and has no third-party package dependencies.
 
-[![Hotch showcase: the edge tab opens AI usage, agent sessions and Mac health, an alert grows out of the tab, and Hotch moves to a pill, an orb and the Dock](docs/images/hotch-showcase.gif)](docs/media/hotch-showcase.mp4)
+[![Hotch on the screen edge: the tab opens AI usage, then live agent sessions, a sweep turns the desktop from dark to light, then Mac health](docs/marketing/video/hotch-reel.gif)](docs/marketing/video/hotch-reel.mp4)
 
-A 21-second showcase animated from Hotch's own UI renders, with demo data. [Watch the MP4](docs/media/hotch-showcase.mp4) · [View the still overview](docs/images/overview-dark.png).
+Recorded from the real app with demo data. [Watch the full 53-second reel](docs/marketing/video/hotch-reel.mp4), with alerts, the original notch view, and the pill, orb and Dock homes.
 
 **Try it:** [Build from source](#build-from-source) · [Report a bug](https://github.com/hotherside/Hotch/issues/new/choose) · [Contribute](CONTRIBUTING.md)
 
@@ -20,12 +20,14 @@ A 21-second showcase animated from Hotch's own UI renders, with demo data. [Watc
 - Optional in-memory clipboard history and brief alerts.
 - A compact three-readout tab on the left, right or bottom, with all six sections inside the card; the original Notch view; floating pill and orb; or menu bar only.
 
-<img src="docs/images/app-icon.png" width="96" alt="Hotch app icon: a companion curve and warm signal">
+![Six homes for Hotch: the screen edge, the notch, the menu bar, a floating pill, an orb, and beside the Dock](docs/marketing/stills/hotch-homes.jpg)
+
+<img src="docs/marketing/brand/app-icon.png" width="96" alt="Hotch app icon: a companion curve and warm signal">
 
 <details>
 <summary>Tour all six sections</summary>
 
-![Native view tour with demo data: Now, AI, Sessions, Mac, Focus, Clipboard and an alert](docs/images/native-tour.gif)
+![Native view tour with demo data: Now, AI, Sessions, Mac, Focus, Clipboard and an alert](docs/marketing/screenshots/native-tour.gif)
 
 Native view snapshots with demo data, one per section, ending on an alert.
 
@@ -34,9 +36,9 @@ Native view snapshots with demo data, one per section, ending on an alert.
 <details>
 <summary>Focus and the original Notch view</summary>
 
-<img src="docs/images/focus-setup.png" width="412" alt="Focus setup with Timer and Stopwatch modes and explicit duration choices">
+<img src="docs/marketing/screenshots/focus-setup.png" width="412" alt="Focus setup with Timer and Stopwatch modes and explicit duration choices">
 
-![Focus running in Notch view, with a persistent clock above the tabs](docs/images/notch-focus.png)
+![Focus running in Notch view, with a persistent clock above the tabs](docs/marketing/screenshots/notch-focus.png)
 
 </details>
 
