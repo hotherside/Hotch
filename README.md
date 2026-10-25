@@ -6,7 +6,7 @@ Hotch is a native macOS companion for a glance at AI plan usage, active Claude C
 
 Recorded from the real app with demo data. [Watch the full 26-second reel](docs/marketing/video/hotch-reel.mp4), with the pill, orb and Dock homes.
 
-**Try it:** [Build from source](#build-from-source) · [Report a bug](https://github.com/hotherside/Hotch/issues/new/choose) · [Contribute](CONTRIBUTING.md)
+**Try it:** [Download for macOS](https://github.com/hotherside/Hotch/releases/latest) · [Build from source](#build-from-source) · [Report a bug](https://github.com/hotherside/Hotch/issues/new/choose) · [Contribute](CONTRIBUTING.md)
 
 > **Project status:** Hotch is an independent project and is not affiliated with Apple, Anthropic, OpenAI, xAI, Moonshot AI, or DeepSeek. Provider data and availability depend on vendor accounts and interfaces, which can change.
 
@@ -44,7 +44,13 @@ Native view snapshots with demo data, one per section, ending on an alert.
 
 ## Install
 
-Hotch is currently available as a [source build](#build-from-source). There is no published app download yet. Packaged downloads will appear on the [Releases page](https://github.com/hotherside/Hotch/releases), with signing and notarization status stated for each release. For an unnotarized local build, macOS may show its normal Gatekeeper warning.
+Download `Hotch-2.2.0.dmg` from the [latest release](https://github.com/hotherside/Hotch/releases/latest), open it and drag **Hotch** into **Applications**. Then open Hotch from your Applications folder. It runs on macOS 14 Sonoma or later, on Apple silicon and Intel Macs.
+
+Hotch is signed with a Developer ID and notarised by Apple, so it opens like any other app. A short welcome helps you choose where it lives, then points to it.
+
+To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.2.0.dmg` with the SHA-256 shown next to the file on the release page.
+
+Prefer to build it yourself? See [Build from source](#build-from-source).
 
 ## Build from source
 
@@ -84,4 +90,4 @@ If Hotch is useful to you, consider starring the repository. Bug reports, docume
 
 ## Releases
 
-See [RELEASING.md](RELEASING.md) for maintainer release steps. Source builds are available for review; signed, notarized distribution depends on maintainer-owned Apple credentials.
+Downloads on the [Releases page](https://github.com/hotherside/Hotch/releases) are signed with the maintainer's Developer ID and notarised by Apple. See [RELEASING.md](RELEASING.md) for the release steps. Builds you make from source are not notarised, and Backpack mode only works in the signed download.

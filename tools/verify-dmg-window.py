@@ -38,6 +38,9 @@ enough to answer "did this land", it cannot corrupt anything, and it keeps this
 script short enough to stay obviously correct.
 """
 
+# macOS ships Python 3.9, which cannot evaluate `X | None` annotations.
+from __future__ import annotations
+
 import argparse
 import plistlib
 import re
