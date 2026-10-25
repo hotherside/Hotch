@@ -42,7 +42,14 @@ enum WelcomeCopy {
     ]
     static let signOff = "Thanks, Hojae"
     static let contact = HotchAbout.email
-    static let notInstalled = "Hotch is running from the disk image. Move it to Applications so it can open at login and keep working after a restart."
+    static let onDiskImage = "Hotch is running from the disk image. Move it to Applications so it can open at login and keep working after a restart."
+    static let translocated = "macOS is running a temporary copy of Hotch. Move it to Applications so it can open at login and keep working after a restart."
+
+    /// The letter's note for a copy that is not installed, worded for the
+    /// two ways that happens, as the launch alert does.
+    static func installNote(installed: Bool, onDiskImage: Bool) -> String? {
+        installed ? nil : (onDiskImage ? Self.onDiskImage : translocated)
+    }
 
     static let setupTitle = "Make it yours"
     static let setupSubtitle = "Choose where Hotch lives. You can move it any time."
@@ -76,7 +83,7 @@ enum WelcomeCopy {
 
     /// Every sentence a new user reads in the welcome, for the copy checks.
     static var all: [String] {
-        var lines = [greeting, signOff, contact, notInstalled, setupTitle, setupSubtitle, spotlightTitle, shortcutHint]
+        var lines = [greeting, signOff, contact, onDiskImage, translocated, setupTitle, setupSubtitle, spotlightTitle, shortcutHint]
         lines += paragraphs
         for anchor in HotchPrefs.Anchor.allCases {
             for side in HotchPrefs.EdgeSide.allCases {

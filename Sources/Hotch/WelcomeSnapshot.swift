@@ -41,7 +41,8 @@ enum WelcomeSnapshot {
 
         func view(_ phase: OnboardingView.Phase, at time: TimeInterval = WelcomeTimeline.duration,
                   installed: Bool = true) -> OnboardingView {
-            OnboardingView(settings: settings, prefs: prefs, installed: installed,
+            OnboardingView(settings: settings, prefs: prefs,
+                           installNote: WelcomeCopy.installNote(installed: installed, onDiskImage: true),
                            initialPhase: phase, frozenAt: time, readyOverride: ready)
         }
 

@@ -8,6 +8,10 @@ import SwiftUI
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
     private let settings: AppSettings
     private var window: NSWindow?
+    /// Bumped by every show and finish, so a fade that finishes after a
+    /// replay began leaves the new welcome alone.
+    private var generation = 0
+    private var finishing = false
     var onOpenSettings: () -> Void = {}
     var onExplainInstall: () -> Void = {}
     /// Placement changed while choosing, so the app can point at the new spot.
@@ -20,16 +24,24 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        if let window, window.isVisible {
+        if let window, window.isVisible, !finishing {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             return
         }
+        generation += 1
+        finishing = false
         let view = OnboardingView(settings: settings,
-                                  installed: InstallLocation.isProperlyInstalled,
+                                  installNote: WelcomeCopy.installNote(
+                                      installed: InstallLocation.isProperlyInstalled,
+                                      onDiskImage: InstallLocation.isOnMountedVolume),
                                   onExplainInstall: { [weak self] in self?.onExplainInstall() },
                                   onOpenSettings: { [weak self] in self?.onOpenSettings() },
-                                  onPlacementChange: { [weak self] in self?.onPlacementChange() },
+                                  onPlacementChange: { [weak self] in
+                                      // Only while it is on screen and choosing.
+                                      guard let self, self.window?.isVisible == true, !self.finishing else { return }
+                                      self.onPlacementChange()
+                                  },
                                   onFinish: { [weak self] in self?.finish() })
         let window = self.window ?? Self.makeWindow(delegate: self)
         self.window = window
@@ -78,19 +90,37 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     private func finish() {
+        // A second Return or click during the fade is the same finish.
+        guard !finishing else { return }
+        finishing = true
         settings.completeWelcome()
-        guard let window else { onFinish(.zero); return }
+        guard let window else { finishing = false; onFinish(.zero); return }
         let origin = window.frame
+        let shown = generation
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = HMotion.reduceMotion ? 0.12 : 0.28
             window.animator().alphaValue = 0
         }, completionHandler: {
-            MainActor.assumeIsolated {
+            MainActor.assumeIsolated { [weak self] in
+                guard let self, self.generation == shown else { return }
                 window.orderOut(nil)
                 window.alphaValue = 1
+                self.release(window)
             }
         })
         onFinish(origin)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        release(window)
+    }
+
+    /// A hidden view would keep watching preferences and readiness, and
+    /// point at the companion whenever it moved, for the rest of the session.
+    private func release(_ window: NSWindow) {
+        window.contentView = nil
+        finishing = false
     }
 }
 
@@ -107,7 +137,7 @@ class WelcomeWindow: NSWindow {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command,
            event.charactersIgnoringModifiers == "w" {
             performClose(nil)
             return true
@@ -121,7 +151,8 @@ struct OnboardingView: View {
 
     @ObservedObject var settings: AppSettings
     @ObservedObject var prefs: HotchPrefs = .shared
-    var installed: Bool = true
+    /// Why this copy cannot keep working from where it is, if it cannot.
+    var installNote: String? = nil
     var onExplainInstall: () -> Void = {}
     var onOpenSettings: () -> Void = {}
     var onPlacementChange: () -> Void = {}
@@ -143,7 +174,7 @@ struct OnboardingView: View {
         ZStack {
             switch current {
             case .letter:
-                WelcomeLetterView(installed: installed,
+                WelcomeLetterView(installNote: installNote,
                                   frozenAt: frozenAt ?? (letterRead ? WelcomeTimeline.duration : nil),
                                   onExplainInstall: onExplainInstall,
                                   onContinue: { go(to: .setup) })

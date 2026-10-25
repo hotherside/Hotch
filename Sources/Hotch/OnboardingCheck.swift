@@ -42,6 +42,11 @@ enum OnboardingCheck {
         check("the letter opens with the agreed greeting", WelcomeCopy.greeting == "Hello, welcome to Hotch.")
         check("the letter signs off as Hojae", WelcomeCopy.signOff == "Thanks, Hojae")
         check("the letter ends with the contact address", WelcomeCopy.contact == "hello@hotherside.com")
+        check("an installed copy gets no install note", WelcomeCopy.installNote(installed: true, onDiskImage: true) == nil)
+        check("a copy on the disk image is told so",
+              WelcomeCopy.installNote(installed: false, onDiskImage: true) == WelcomeCopy.onDiskImage)
+        check("a translocated copy is not told it is on the disk image",
+              WelcomeCopy.installNote(installed: false, onDiskImage: false) == WelcomeCopy.translocated)
         check("welcome copy has no em dashes", !WelcomeCopy.all.contains { $0.contains("\u{2014}") })
         check("each screen edge is named where Hotch lands",
               WelcomeCopy.whereItLives(.edge, side: .right, realNotch: false).contains("right edge")

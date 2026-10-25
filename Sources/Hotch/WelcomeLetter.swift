@@ -89,7 +89,7 @@ struct CompanionCurve: Shape {
 /// The first thing a new person sees: the mark draws itself, the signal
 /// lights, and a short letter eases in line by line.
 struct WelcomeLetterView: View {
-    var installed: Bool = true
+    var installNote: String? = nil
     /// One moment of the greeting, for rendered docs; nil plays it live.
     var frozenAt: TimeInterval? = nil
     var onExplainInstall: () -> Void = {}
@@ -126,7 +126,7 @@ struct WelcomeLetterView: View {
                 .scrollBounceBehavior(.basedOnSize)
             }
             VStack(spacing: 14) {
-                if !installed { installNote }
+                if let installNote { installRow(installNote) }
                 Button(action: onContinue) {
                     Text("Set up Hotch").frame(minWidth: 150)
                 }
@@ -187,12 +187,12 @@ struct WelcomeLetterView: View {
     /// A copy run from the disk image works, but cannot open at login and is
     /// gone after a restart. Said gently here rather than in an alert on top
     /// of the greeting.
-    private var installNote: some View {
+    private func installRow(_ note: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(HP.amber)
                 .accessibilityHidden(true)
-            Text(WelcomeCopy.notInstalled)
+            Text(note)
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
