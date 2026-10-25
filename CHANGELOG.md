@@ -12,6 +12,7 @@ Notable user-facing changes are recorded here.
 - Add labelled Backpack entry points on Now, in footers and in the menu; opening them explains setup before starting a session.
 - Harden local API-key storage permissions and add filesystem security checks.
 - Greet new users with a short welcome letter and one setup screen for placement, provider detection and clipboard history, then point to where Hotch now lives. A copy opened from the disk image is told so in the letter instead of an alert. Clipboard history starts off on fresh installs and preserves existing choices on upgrades.
+- Stop macOS asking for access to the Desktop or Documents folder over the welcome when Hotch is opened from a terminal in a project there, as `make run` does. The Claude Code usage read no longer looks in that folder.
 - Confirm session host handoffs before dismissing the panel; explain unavailable or ambiguous destinations.
 - Prepare the project for public contribution with build guidance, privacy and security notes, and CI checks.
 - Refresh provider setup, session, system-monitoring, and clipboard documentation to match the current app.

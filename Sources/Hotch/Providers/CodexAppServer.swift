@@ -123,7 +123,8 @@ enum CodexAppServer {
         let process = Process()
         process.executableURL = binary
         process.arguments = ["app-server"]
-        process.environment = ChildProcess.environment(binary: binary)
+        process.environment = ChildProcess.environment(binary: binary,
+                                                       directory: process.currentDirectoryURL)
 
         let input = Pipe(), output = Pipe(), errors = Pipe()
         process.standardInput = input
