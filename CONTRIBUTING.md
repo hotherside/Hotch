@@ -45,3 +45,5 @@ swift tools/render-demo.swift build/story docs/images/native-tour.gif
 ```
 
 Available fixtures: `rich`, `empty`, `stale`, `disconnected`, `highpressure`, `needsinput`. Omit `--snapshot-dark` for light mode. Use `--snapshot-page now|ai|agents|mac|focus|clipboard` to select an overview page. Keep screenshots free of real sessions, clipboard text and account details.
+
+The animated README showcase is built from `--snapshot-parts` renders; [Showcase/README.md](Showcase/README.md) describes how to refresh and render it.

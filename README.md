@@ -2,9 +2,13 @@
 
 Hotch is a native macOS companion for a glance at AI plan usage, active Claude Code and Codex work, and Mac activity. Keep it on a screen edge, by the Dock, around the notch, floating on your desktop, or in the menu bar. It is built with Swift and SwiftUI, targets macOS 14 or later, and has no third-party package dependencies.
 
-> **Project status:** Hotch is an independent project and is not affiliated with Apple, Anthropic, OpenAI, xAI, Moonshot AI, or DeepSeek. Provider data and availability depend on vendor accounts and interfaces, which can change.
+[![Hotch showcase: the edge tab opens AI usage, agent sessions and Mac health, an alert grows out of the tab, and Hotch moves to a pill, an orb and the Dock](docs/images/hotch-showcase.gif)](docs/media/hotch-showcase.mp4)
 
-![Hotch overview](docs/images/overview-dark.png)
+A 21-second showcase animated from Hotch's own UI renders, with demo data. [Watch the MP4](docs/media/hotch-showcase.mp4) · [View the still overview](docs/images/overview-dark.png).
+
+**Try it:** [Build from source](#build-from-source) · [Report a bug](https://github.com/hotherside/Hotch/issues/new/choose) · [Contribute](CONTRIBUTING.md)
+
+> **Project status:** Hotch is an independent project and is not affiliated with Apple, Anthropic, OpenAI, xAI, Moonshot AI, or DeepSeek. Provider data and availability depend on vendor accounts and interfaces, which can change.
 
 ## Features
 
@@ -19,11 +23,11 @@ Hotch is a native macOS companion for a glance at AI plan usage, active Claude C
 <img src="docs/images/app-icon.png" width="96" alt="Hotch app icon: a companion curve and warm signal">
 
 <details>
-<summary>Take a 19-second tour</summary>
+<summary>Tour all six sections</summary>
 
-![Native view tour with demo data](docs/images/native-tour.gif)
+![Native view tour with demo data: Now, AI, Sessions, Mac, Focus, Clipboard and an alert](docs/images/native-tour.gif)
 
-Native view snapshots with demo data, showing the resting rail, six sections and an alert. This storyboard shows layout; hover timing is best tried in the app.
+Native view snapshots with demo data, one per section, ending on an alert.
 
 </details>
 
@@ -38,7 +42,7 @@ Native view snapshots with demo data, showing the resting rail, six sections and
 
 ## Install
 
-Download a release from the repository's **Releases** page when one is available. Open the DMG and drag `Hotch.app` to Applications. Release signing and notarization status will be stated with each release. For an unnotarized local build, macOS may show its normal Gatekeeper warning.
+Hotch is currently available as a [source build](#build-from-source). There is no published app download yet. Packaged downloads will appear on the [Releases page](https://github.com/hotherside/Hotch/releases), with signing and notarization status stated for each release. For an unnotarized local build, macOS may show its normal Gatekeeper warning.
 
 ## Build from source
 
@@ -73,6 +77,8 @@ Backpack mode installs a privileged helper only after the user approves it in Sy
 ## Contribute
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and small ways to help. Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. The project is distributed under the MIT License; see [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+If Hotch is useful to you, consider starring the repository. Bug reports, documentation improvements, and focused pull requests are welcome.
 
 ## Releases
 

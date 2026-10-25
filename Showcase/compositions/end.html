@@ -13,7 +13,7 @@
       position: absolute;
       inset: 0;
       background:
-        radial-gradient(circle at 50% 46%, rgba(245, 165, 36, 0.10), transparent 38%),
+        radial-gradient(circle at 50% 46%, rgba(255, 140, 102, 0.10), transparent 38%),
         #1a1620;
     }
     #e-lockup {
@@ -23,17 +23,18 @@
       width: 1920px;
       height: 1080px;
     }
+    /* The app icon's companion curve and warm signal, cropped to the mark. */
     #e-glyph {
       position: absolute;
-      left: 652px;
-      top: 404px;
-      width: 168px;
-      height: 122px;
+      left: 710px;
+      top: 384px;
+      width: 88px;
+      height: 130px;
       overflow: visible;
     }
     #e-word {
       position: absolute;
-      left: 858px;
+      left: 830px;
       top: 372px;
       font: 760 150px/1 "Bricolage Grotesque", sans-serif;
       letter-spacing: -0.03em;
@@ -56,10 +57,10 @@
   <div data-hf-id="hf-gwfo" id="root" data-composition-id="end" data-width="1920" data-height="1080">
     <div data-hf-id="hf-w90u" id="e-ground"></div>
     <div data-hf-id="hf-gx2p" id="e-lockup">
-      <svg data-hf-id="hf-o7tp" id="e-glyph" viewBox="0 0 22 16" aria-hidden="true">
-        <rect data-hf-id="hf-6n60" id="e-frame" x="1" y="1" width="20" height="14" rx="4.2" fill="none" stroke="#f4f2fa"
-          stroke-width="1.6" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" />
-        <rect data-hf-id="hf-9a2e" id="e-notch" x="6" y="1" width="10" height="5.2" rx="2" fill="#f5a524" />
+      <svg data-hf-id="hf-o7tp" id="e-glyph" viewBox="21 10 54 80" aria-hidden="true">
+        <path data-hf-id="hf-6n60" id="e-curve" d="M60 16 C17 21 17 79 60 84" fill="none" stroke="#f7f5ed"
+          stroke-width="12" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" />
+        <circle data-hf-id="hf-9a2e" id="e-signal" cx="65" cy="50" r="10" fill="#ff8c66" />
       </svg>
       <div data-hf-id="hf-kuv5" id="e-word">Hotch</div>
       <p data-hf-id="hf-w3e4" id="e-line">
@@ -76,11 +77,11 @@
       // The ground floods over the desktop.
       tl.fromTo("#e-ground", { opacity: 0 }, { opacity: 1, duration: 0.45, ease: "power2.inOut" }, 0);
 
-      // The glyph draws itself, then its notch fills.
-      tl.fromTo("#e-frame", { attr: { "stroke-dashoffset": 100 } },
+      // The curve draws itself, then the warm signal lands.
+      tl.fromTo("#e-curve", { attr: { "stroke-dashoffset": 100 } },
         { attr: { "stroke-dashoffset": 0 }, duration: 0.5, ease: "power2.inOut" }, 0.35);
-      tl.fromTo("#e-notch", { scaleY: 0, transformOrigin: "50% 0%" },
-        { scaleY: 1, duration: 0.24, ease: "expo.out" }, 0.82);
+      tl.fromTo("#e-signal", { scale: 0, transformOrigin: "50% 50%" },
+        { scale: 1, duration: 0.3, ease: "back.out(2)" }, 0.8);
 
       // The wordmark wipes in beside it.
       tl.fromTo("#e-word", { clipPath: "inset(0px 100% 0px 0px)" },

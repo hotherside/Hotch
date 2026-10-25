@@ -12,38 +12,46 @@
     #root img {
       position: absolute;
       display: block;
+    }
+    /* Shadows sit on the groups, so they follow each clip and survive the blur-ins. */
+    #h-float,
+    #h-bars {
+      position: absolute;
+      inset: 0;
       filter: drop-shadow(0 22px 30px rgba(0, 0, 0, 0.4));
     }
     /* Floating homes at 1.5x the 2x render, right edge 1800, centred on y 540. */
     #h-pill {
-      left: 1083px;
+      left: 870px;
       top: 489px;
-      width: 717px;
+      width: 930px;
       height: 102px;
       opacity: 0;
     }
     #h-pilla {
-      left: 1056px;
+      left: 870px;
       top: 489px;
-      width: 744px;
+      width: 930px;
       height: 192px;
       opacity: 0;
-      clip-path: inset(0px 0px 47% 0px);
+      clip-path: inset(0px 0px 46.9% 0px);
     }
+    /* Above the capsule, so the capsule opens out from behind it. */
     #h-orb {
-      left: 1662px;
+      z-index: 2;
+      left: 1479px;
       top: 465px;
-      width: 138px;
+      width: 321px;
       height: 150px;
       opacity: 0;
     }
     #h-orba {
-      left: 918px;
+      left: 735px;
       top: 465px;
-      width: 882px;
+      width: 1065px;
       height: 150px;
       opacity: 0;
-      clip-path: inset(0px 0px 0px 84.4%);
+      clip-path: inset(0px 0px 0px 69.9%);
     }
     /* Beside the Dock: the bar to the Dock's left, same height, 15 px off the bottom. */
     #h-dockrow {
@@ -135,13 +143,17 @@
     }
   </style>
   <div data-hf-id="hf-gpcx" id="root" data-composition-id="homes" data-width="1920" data-height="1080">
+    <div id="h-float">
     <img data-hf-id="hf-9huu" id="h-pill" src="assets/ui/pill.png" alt="Hotch floating pill" />
     <img data-hf-id="hf-o257" id="h-pilla" src="assets/ui/pill-alert.png" alt="Pill with an alert line" />
     <img data-hf-id="hf-0lo8" id="h-orb" src="assets/ui/orb.png" alt="Hotch floating orb" />
     <img data-hf-id="hf-npfc" id="h-orba" src="assets/ui/orb-alert.png" alt="Orb stretched into an alert capsule" />
+    </div>
     <div data-hf-id="hf-fnz3" id="h-dockrow">
+      <div id="h-bars">
       <img data-hf-id="hf-nyb6" id="h-bar" src="assets/ui/bottom.png" alt="Hotch bar beside the Dock" />
       <img data-hf-id="hf-a9he" id="h-bara" src="assets/ui/bottom-alert.png" alt="Dock bar with an alert label" />
+      </div>
       <div data-hf-id="hf-p39y" id="h-dock" aria-hidden="true"><i data-hf-id="hf-wt6k"></i><i data-hf-id="hf-zeb8"></i><i data-hf-id="hf-y7e5"></i><i data-hf-id="hf-ylp6"></i><i data-hf-id="hf-0l8b"></i><i data-hf-id="hf-0zjc"></i><i data-hf-id="hf-zsm9"></i><i data-hf-id="hf-06xa"></i><i data-hf-id="hf-26gf"></i></div>
     </div>
 
@@ -176,19 +188,19 @@
         { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.34, ease: "expo.out" }, 0.25);
       tl.set("#h-pilla", { opacity: 1 }, 0.95);
       tl.to("#h-pill", { opacity: 0, duration: 0.1, ease: "none" }, 0.95);
-      tl.fromTo("#h-pilla", { clipPath: "inset(0px 0px 47% 0px)" },
+      tl.fromTo("#h-pilla", { clipPath: "inset(0px 0px 46.9% 0px)" },
         { clipPath: "inset(0px 0px 0% 0px)", duration: 0.38, ease: "expo.out" }, 0.95);
 
       // The pill folds toward its right end and becomes the orb.
-      tl.to("#h-pilla", { clipPath: "inset(0px 0px 0% 81%)", opacity: 0, duration: 0.3, ease: "power3.in" }, 1.75);
+      tl.to("#h-pilla", { clipPath: "inset(0px 0px 0% 66%)", opacity: 0, duration: 0.3, ease: "power3.in" }, 1.75);
       tl.fromTo("#h-orb", { opacity: 0, scale: 0.8 },
         { opacity: 1, scale: 1, duration: 0.34, ease: "expo.out" }, 1.95);
 
       // The orb stretches into a capsule to speak.
       tl.set("#h-orba", { opacity: 1 }, 2.4);
-      tl.fromTo("#h-orba", { clipPath: "inset(0px 0px 0px 84.4%)" },
+      tl.fromTo("#h-orba", { clipPath: "inset(0px 0px 0px 69.9%)" },
         { clipPath: "inset(0px 0px 0px 0%)", duration: 0.46, ease: "expo.out" }, 2.4);
-      tl.set("#h-orb", { opacity: 0 }, 2.42);
+      tl.to("#h-orb", { opacity: 0, duration: 0.16, ease: "power2.out" }, 2.42);
 
       // Off it goes; the Dock rises with the bar beside it.
       tl.to("#h-orba", { opacity: 0, y: -24, duration: 0.24, ease: "power3.in" }, 3.0);
