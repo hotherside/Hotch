@@ -1,0 +1,49 @@
+[package]
+name = "hotch"
+version = "2.2.0"
+edition = "2024"
+description = "Hotch for Linux: AI plan usage, agent sessions and system load in the GNOME top bar, a tray or a CLI"
+license = "MIT"
+publish = false
+rust-version = "1.88"
+
+[dependencies]
+serde_json = "1.0.154"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3.7", default-features = false, features = ["blocking", "async-io"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Adds Tray::label (Ubuntu's AppIndicator label). Proposed upstream as
+# iovxw/ksni "Add Tray::label for the Ayatana label extension"; drop this patch
+# once a ksni release includes it.
+[patch.crates-io]
+ksni = { git = "https://github.com/sire6/ksni", rev = "9904396e1766bc0503904e16c143431cb7c52c71" }
+
+# `cargo deb` builds target/debian/hotch_<version>_<arch>.deb: the binary, the
+# GNOME Shell extension (installed for every user, enabled per user) and the
+# tray launcher. The tray is not autostarted, so it never doubles the extension.
+[package.metadata.deb]
+maintainer = "Hotch <hello@hotherside.com>"
+copyright = "2026 Hojae Jung"
+license-file = ["../LICENSE", "0"]
+section = "utils"
+extended-description = """\
+Claude and Codex plan usage, live Claude Code and Codex sessions, and CPU, \
+memory and battery, as a GNOME top-bar panel or floating pill, a tray icon on \
+other desktops, and a CLI. Linux port of the Hotch macOS app."""
+assets = [
+    ["target/release/hotch", "usr/bin/", "755"],
+    ["gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
+    ["gnome-extension/extension.js", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
+    ["gnome-extension/stylesheet.css", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
+    ["gnome-extension/icons/*", "usr/share/gnome-shell/extensions/hotch@hotherside.com/icons/", "644"],
+    ["hotch.desktop", "usr/share/applications/", "644"],
+    ["../docs/marketing/brand/app-icon.png", "usr/share/icons/hicolor/512x512/apps/hotch.png", "644"],
+]
