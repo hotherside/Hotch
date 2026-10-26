@@ -21,7 +21,7 @@ strip = true
 panic = "abort"
 
 # Adds Tray::label (Ubuntu's AppIndicator label). Proposed upstream as
-# iovxw/ksni "Add Tray::label for the Ayatana label extension"; drop this patch
+# https://github.com/iovxw/ksni/pull/47; drop this patch
 # once a ksni release includes it.
 [patch.crates-io]
 ksni = { git = "https://github.com/sire6/ksni", rev = "9904396e1766bc0503904e16c143431cb7c52c71" }
