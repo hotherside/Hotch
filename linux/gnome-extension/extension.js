@@ -250,6 +250,7 @@ class HotchIndicator extends PanelMenu.Button {
         if (this._timer)
             GLib.source_remove(this._timer);
         this._timer = null;
+        this._card.destroy();
         super.destroy();
     }
 
@@ -607,6 +608,9 @@ class HotchPill extends St.BoxLayout {
     }
 
     destroy() {
+        // The shared card may still sit in this menu ("Move to top bar" is
+        // clicked from it): take it out so it outlives the pill.
+        this.menu.box.remove_all_children();
         this.menu.destroy();
         super.destroy();
     }
@@ -737,6 +741,15 @@ export default class HotchExtension extends Extension {
         await wait(600);
         await this._shoot(`${prefix}-pill-menu.png`);
         this.pill.menu.close();
+        // Back to the top bar from the pill's card, then a refresh: the card
+        // must survive the pill.
+        this.setHome('panel', false);
+        this._indicator._refresh();
+        await wait(3000);
+        this._indicator.menu.open();
+        await wait(600);
+        await this._shoot(`${prefix}-back.png`);
+        this._indicator.menu.close();
     }
 
     /// Moves Hotch between the top bar and the floating pill. The top-bar
