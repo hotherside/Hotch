@@ -7,6 +7,12 @@ Two front ends share the binary:
 - **GNOME Shell extension** (Ubuntu, Fedora, any GNOME 48 or later). This is the full Hotch panel in the top bar: a usage ring and percentage, and a dark card with Now, AI, Sessions and System tabs, drawn with the same colours, rings and brand marks as the macOS app. It runs `hotch all --json` once a minute.
 - **Tray icon** (KDE, Xfce, Cinnamon, waybar, or GNOME without the extension). A ring that fills with the fullest session window and turns red from 90%, the percentage beside it where the host supports labels, and a plain menu with the same data.
 
+![The GNOME panel: Now, AI, Sessions and System tabs](screenshots/panel.png)
+
+<img src="screenshots/pill.png" alt="The floating pill and its card" width="390">
+
+Screenshots use demo data, on Ubuntu 26.04 with GNOME Shell 50.
+
 ## Install
 
 On Ubuntu or Debian, the simplest route is the `.deb` (from the release page, or build it with `cargo deb` as below):
