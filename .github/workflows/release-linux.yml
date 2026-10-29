@@ -1,0 +1,88 @@
+name: Linux release assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag (must match the source versions)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check release versions
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: python3 tools/check_version.py --tag "$RELEASE_TAG"
+      - name: Verify and build
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked --release
+          node --check gnome-extension/extension.js
+          node --test tests/*.test.mjs
+      - name: Package Linux downloads
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build
+          python3 tools/package_extension.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-${{ matrix.arch }}
+          path: linux/target/debian/*.deb
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'amd64'
+        with:
+          name: linux-gnome-extension
+          path: linux/target/hotch-gnome-*.zip
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-*
+          path: assets
+          merge-multiple: true
+      - name: Attach verified Linux assets to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        working-directory: assets
+        run: |
+          sha256sum ./*.deb ./*.zip > SHA256SUMS-linux.txt
+          gh release upload "$RELEASE_TAG" ./*.deb ./*.zip SHA256SUMS-linux.txt --clobber

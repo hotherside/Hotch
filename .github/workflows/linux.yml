@@ -2,9 +2,10 @@ name: Linux checks
 
 on:
   push:
-    paths: ["linux/**", ".github/workflows/linux.yml"]
+    branches: [main]
+    paths: ["linux/**", ".github/workflows/linux.yml", ".github/workflows/release-linux.yml", "Makefile", "Sources/Hotch/About.swift"]
   pull_request:
-    paths: ["linux/**", ".github/workflows/linux.yml"]
+    paths: ["linux/**", ".github/workflows/linux.yml", ".github/workflows/release-linux.yml", "Makefile", "Sources/Hotch/About.swift"]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,11 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     defaults:
       run:
@@ -21,12 +26,17 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
       - name: Lint, test and build
         run: |
+          python3 tools/check_version.py
           cargo fmt --check
-          cargo clippy --all-targets -- -D warnings
-          cargo test
-          cargo build --release
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked --release
 
       - uses: actions/setup-node@v4
         with:
@@ -44,9 +54,23 @@ jobs:
         run: |
           cargo install cargo-deb --locked
           cargo deb --no-build
+          python3 tools/package_extension.py
+
+      - name: Verify installed package contents
+        run: |
+          dpkg-deb --contents target/debian/*.deb > target/package-contents.txt
+          for file in extension.js data.js model.js stylesheet.css metadata.json; do
+            grep -F "usr/share/gnome-shell/extensions/hotch@hotherside.com/$file" target/package-contents.txt
+          done
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
         with:
-          name: hotch-deb
+          name: hotch-deb-${{ matrix.runner }}
           path: linux/target/debian/*.deb
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.runner == 'ubuntu-24.04'
+        with:
+          name: hotch-gnome-extension
+          path: linux/target/hotch-gnome-*.zip

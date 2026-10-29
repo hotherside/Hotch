@@ -2,6 +2,14 @@
 
 Notable user-facing changes are recorded here.
 
+## Unreleased
+
+- Add experimental Linux support, contributed by Simon (@sire6): a GNOME companion, a tray on other desktops, and a Rust CLI for Claude/Codex usage, sessions, CPU, memory and battery.
+- Add Linux Settings with top bar, pill, orb and three screen-edge placements, system/light/dark appearance, used/remaining display, provider controls and refresh intervals.
+- Add a persistent GNOME Focus timer/stopwatch and an optional five-entry clipboard history held only in memory, with supplied password-manager privacy markers skipped.
+- Show failed Linux provider refreshes with the original reading age and a two-hour expiry; use Codex thread status and discover older resumed rollouts.
+- Prepare version-checked amd64/arm64 Debian packages, a standalone GNOME extension ZIP, checksums and a Linux release-assets workflow. Linux remains experimental; see its support matrix and desktop validation checklist.
+
 ## 2.2.0
 
 - Keep all six navigation targets in a taller, gentler screen-edge rail, with smaller live readouts, deliberate hover switching and stable card attachment.

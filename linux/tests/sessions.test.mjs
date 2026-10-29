@@ -27,7 +27,7 @@ done
             '{"type":"event_msg","payload":{"type":"task_complete"}}\n');
         const binary = fileURLToPath(new URL('../target/release/hotch', import.meta.url));
         const result = JSON.parse(execFileSync(binary, ['sessions', '--json'], {
-            env: {...process.env, HOME: home, PATH: bin}, timeout: 10000, encoding: 'utf8',
+            env: {...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), PATH: bin}, timeout: 10000, encoding: 'utf8',
         }));
         assert.equal(result.sessions.length, 2);
         assert.equal(result.sessions[0].activity, 'needs input');

@@ -1,4 +1,5 @@
 mod sessions;
+mod settings;
 #[cfg(target_os = "linux")]
 mod system;
 #[cfg(target_os = "linux")]
@@ -17,6 +18,7 @@ usage: hotch [command] [--json]
   sessions   live Claude Code and Codex sessions
   system     CPU, memory, battery (Linux)
   all        everything above
+  settings   show preferences; settings set KEY VALUE changes one
 ";
 
 fn main() {
@@ -35,6 +37,12 @@ fn main() {
             |v| [usage_text(v), sessions_text(v), system_text(v)].join("\n"),
         ),
         Some("version") => println!("hotch {}", env!("CARGO_PKG_VERSION")),
+        Some("settings") => {
+            if let Err(e) = settings::command(&args[1..]) {
+                eprintln!("hotch: {e}");
+                std::process::exit(2);
+            }
+        }
         _ => print!("{HELP}"),
     }
 }
@@ -80,6 +88,7 @@ fn system_json() -> Value {
 }
 
 fn usage_text(v: &Value) -> String {
+    let remaining = settings::Settings::load().remaining();
     let mut out = String::new();
     for u in v["usage"].as_array().into_iter().flatten() {
         out += &format!("{}\n", u["provider"].as_str().unwrap_or(""));
@@ -88,9 +97,14 @@ fn usage_text(v: &Value) -> String {
         }
         for w in u["windows"].as_array().into_iter().flatten() {
             out += &format!(
-                "  {:<14} {:>3.0}%\n",
+                "  {:<14} {:>3.0}% {}\n",
                 w["label"].as_str().unwrap_or(""),
-                w["percent"].as_f64().unwrap_or(0.0)
+                if remaining {
+                    100.0 - w["percent"].as_f64().unwrap_or(0.0)
+                } else {
+                    w["percent"].as_f64().unwrap_or(0.0)
+                },
+                if remaining { "remaining" } else { "used" }
             );
         }
         for x in u["extras"].as_array().into_iter().flatten() {

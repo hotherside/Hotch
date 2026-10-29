@@ -2,6 +2,7 @@
 //! A worker thread refreshes once a minute; nothing runs in between.
 
 use crate::sessions::{self, Session};
+use crate::settings::Settings;
 use crate::system::{self, System};
 use crate::usage::{self, Usage};
 use ksni::blocking::TrayMethods;
@@ -10,7 +11,6 @@ use ksni::{Icon, MenuItem, ToolTip};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime};
 
-const REFRESH: Duration = Duration::from_secs(60);
 const ACCENT: [u8; 3] = [0xE8, 0x83, 0x3A];
 const ALERT: [u8; 3] = [0xE5, 0x48, 0x4D];
 
@@ -19,9 +19,16 @@ struct Hotch {
     sessions: Vec<Session>,
     system: System,
     refresh: mpsc::Sender<()>,
+    settings: Settings,
 }
 
 impl Hotch {
+    fn percent(&self, used: f64) -> f64 {
+        if self.settings.remaining() { 100.0 - used } else { used }
+    }
+    fn unit(&self) -> &str {
+        if self.settings.remaining() { "remaining" } else { "used" }
+    }
     /// The fullest session window across providers: what the icon draws.
     fn headline(&self) -> Option<f64> {
         self.usages
@@ -35,7 +42,14 @@ impl Hotch {
         let parts: Vec<String> = self
             .usages
             .iter()
-            .filter_map(|u| Some(format!("{} {:.0}%", title(u.provider), u.windows.first()?.percent)))
+            .filter_map(|u| {
+                Some(format!(
+                    "{} {:.0}% {}",
+                    title(u.provider),
+                    self.percent(u.windows.first()?.percent),
+                    self.unit()
+                ))
+            })
             .collect();
         if parts.is_empty() {
             "Hotch".into()
@@ -62,7 +76,7 @@ impl ksni::Tray for Hotch {
         let parts: Vec<String> = self
             .usages
             .iter()
-            .filter_map(|u| Some(format!("{:.0}%", u.windows.first()?.percent)))
+            .filter_map(|u| Some(format!("{:.0}%", self.percent(u.windows.first()?.percent))))
             .collect();
         parts.join(" · ")
     }
@@ -72,7 +86,7 @@ impl ksni::Tray for Hotch {
     }
 
     fn icon_pixmap(&self) -> Vec<Icon> {
-        vec![ring(32, self.headline())]
+        vec![ring(32, self.headline(), self.settings.remaining())]
     }
 
     fn tool_tip(&self) -> ToolTip {
@@ -106,7 +120,12 @@ impl ksni::Tray for Hotch {
                     .resets_at
                     .map(|r| format!(" · resets in {}", relative(r - now)))
                     .unwrap_or_default();
-                items.push(info(format!("    {}  {:.0}%{reset}", w.label, w.percent)));
+                items.push(info(format!(
+                    "    {}  {:.0}% {}{reset}",
+                    w.label,
+                    self.percent(w.percent),
+                    self.unit()
+                )));
             }
             for x in &u.extras {
                 items.push(info(format!("    {x}")));
@@ -114,6 +133,7 @@ impl ksni::Tray for Hotch {
         }
 
         items.push(MenuItem::Separator);
+        items.push(info("Preferences: hotch settings (CLI); full Settings in GNOME".into()));
         if self.sessions.is_empty() {
             items.push(info("No active sessions".into()));
         }
@@ -163,6 +183,7 @@ pub fn run() {
         sessions: vec![],
         system: System::default(),
         refresh: tx,
+        settings: Settings::load(),
     };
     let handle = match tray.spawn() {
         Ok(h) => h,
@@ -174,12 +195,15 @@ pub fn run() {
 
     let mut ticks = None;
     loop {
+        let settings = Settings::load();
+        let refresh = Duration::from_secs(settings.refresh());
         // Sessions and system are cheap and local: show them before the
         // providers' CLIs answer.
         let (sys, t) = system::sample(ticks);
         ticks = Some(t);
         let found = sessions::scan();
         handle.update(|h| {
+            h.settings = settings;
             h.system = sys;
             h.sessions = found;
         });
@@ -199,7 +223,7 @@ pub fn run() {
         }
         // A Refresh click wakes early; a disconnected channel cannot happen
         // while the tray holds the sender.
-        let _ = rx.recv_timeout(REFRESH);
+        let _ = rx.recv_timeout(refresh);
         while rx.try_recv().is_ok() {}
     }
 }
@@ -239,10 +263,10 @@ fn relative(secs: i64) -> String {
 
 /// A ring gauge: faint track, arc clockwise from 12 o'clock by `percent`.
 /// Red from 90%. No percent yet (first launch) draws the track only.
-fn ring(size: i32, percent: Option<f64>) -> Icon {
+fn ring(size: i32, percent: Option<f64>, remaining: bool) -> Icon {
     let c = size as f64 / 2.0;
     let (outer, inner) = (c - 1.0, c * 0.58);
-    let fill = percent.unwrap_or(0.0) / 100.0;
+    let fill = percent.map(|p| if remaining { 100.0 - p } else { p }).unwrap_or(0.0) / 100.0;
     let color = if percent.unwrap_or(0.0) >= 90.0 { ALERT } else { ACCENT };
     let mut data = Vec::with_capacity((size * size * 4) as usize);
     for y in 0..size {

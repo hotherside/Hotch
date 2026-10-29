@@ -54,6 +54,14 @@ Prefer to build it yourself? See [Build from source](#build-from-source).
 
 ## Build from source
 
+### Experimental Linux support
+
+Linux has a separate Rust backend and GNOME Shell frontend. It now includes Settings, top-bar/pill/orb/screen-edge placements, light/dark appearance, Focus, and optional in-memory clipboard history on GNOME 48–50. Other Linux desktops use a simpler tray with shared preferences through `hotch settings`. It supports Claude and Codex; macOS-specific integration and additional providers remain unavailable. See the [Linux installation guide and feature matrix](linux/README.md) for the supported combinations and current limitations.
+
+Linux packages and an extension ZIP are built in CI. Published Linux assets are experimental and are separate from the signed/notarized macOS download; check the release's actual attached assets before installing.
+
+### macOS
+
 You need a Mac with Swift 6 and the macOS 26 SDK or newer to compile the optional Liquid Glass code. The resulting app runs on macOS 14 or later. Xcode 26.3 is the CI toolchain; matching Command Line Tools can also work. The Makefile prefers a locally installed 26.x SDK to avoid missing SwiftUI macro plugins in some newer CLT installations.
 
 ```sh
