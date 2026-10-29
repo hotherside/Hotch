@@ -98,7 +98,8 @@ impl ksni::Tray for Hotch {
         for u in &self.usages {
             items.push(info(title(u.provider).into()));
             if let Some(e) = &u.error {
-                items.push(info(format!("    {e}")));
+                let prefix = if u.stale { "Stale reading; update failed: " } else { "" };
+                items.push(info(format!("    {prefix}{e}")));
             }
             for w in &u.windows {
                 let reset = w
@@ -184,14 +185,11 @@ pub fn run() {
         });
         let fresh = usage::fetch_all();
         let updated = handle.update(|h| {
-            // A failed read (rate limited, offline) keeps the last good one,
-            // as the Mac app does, rather than blanking the panel.
-            // ponytail: no max age; the Mac app drops readings older than 2 h.
             let merged = fresh
                 .into_iter()
-                .map(|new| match h.usages.iter().find(|old| old.provider == new.provider) {
-                    Some(old) if new.windows.is_empty() && !old.windows.is_empty() => old.clone(),
-                    _ => new,
+                .map(|new| {
+                    let old = h.usages.iter().find(|old| old.provider == new.provider);
+                    usage::retain_last_good(new, old, unix_now())
                 })
                 .collect();
             h.usages = merged;

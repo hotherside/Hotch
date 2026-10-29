@@ -28,6 +28,15 @@ jobs:
           cargo test
           cargo build --release
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check extension data policy and syntax
+        run: |
+          node --check gnome-extension/extension.js
+          node --test tests/*.test.mjs
+
       - name: Smoke test
         run: target/release/hotch all --json
 

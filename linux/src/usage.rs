@@ -28,6 +28,9 @@ pub struct Usage {
     pub plan: Option<String>,
     /// Set when the provider could not be read; `windows` is then empty.
     pub error: Option<String>,
+    /// Time of the last successful reading, never the last failed attempt.
+    pub fetched_at: Option<i64>,
+    pub stale: bool,
 }
 
 impl Usage {
@@ -48,6 +51,8 @@ impl Usage {
             "extras": self.extras,
             "plan": self.plan,
             "error": self.error,
+            "fetchedAt": self.fetched_at,
+            "stale": self.stale,
         })
     }
 }
@@ -55,10 +60,42 @@ impl Usage {
 pub fn fetch_all() -> Vec<Usage> {
     let claude = thread::spawn(claude);
     let codex = codex();
+    let now = unix_now();
     vec![
         claude.join().unwrap_or_else(|_| Usage::failed("claude", "crashed")),
         codex,
     ]
+    .into_iter()
+    .map(|mut u| {
+        if u.error.is_none() && !u.windows.is_empty() {
+            u.fetched_at = Some(now);
+        }
+        u
+    })
+    .collect()
+}
+
+pub fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Preserve a bounded last good reading while keeping the new failure visible.
+#[cfg(any(target_os = "linux", test))]
+pub fn retain_last_good(new: Usage, old: Option<&Usage>, now: i64) -> Usage {
+    if new.error.is_none() || !new.windows.is_empty() {
+        return new;
+    }
+    match old.filter(|u| !u.windows.is_empty() && u.fetched_at.is_some_and(|t| now - t < 2 * 3600)) {
+        Some(old) => Usage {
+            error: new.error,
+            stale: true,
+            ..old.clone()
+        },
+        None => new,
+    }
 }
 
 // MARK: - Binary lookup
@@ -219,6 +256,7 @@ fn claude_exchange(bin: &PathBuf, quiet: bool) -> Result<Usage, Retry> {
             extras,
             plan,
             error,
+            ..Default::default()
         });
     }
     let tail = s.stderr();
@@ -316,33 +354,52 @@ pub fn parse_claude(rl: &Value) -> (Vec<Window>, Vec<String>) {
 // MARK: - Codex
 
 pub fn codex() -> Usage {
-    let Some(bin) = locate("codex", &[".local/bin/codex", ".npm-global/bin/codex"]) else {
-        return Usage::failed("codex", "Codex CLI not installed");
-    };
-    let mut s = match Session::start(Command::new(&bin).arg("app-server")) {
+    let mut s = match codex_session() {
         Ok(s) => s,
-        Err(e) => return Usage::failed("codex", format!("could not start codex: {e}")),
+        Err(e) => return Usage::failed("codex", e),
     };
     let end = deadline();
-    let response = |s: &mut Session, id: i64| loop {
-        let v = s.next(end)?;
-        if v["id"] == id {
-            return Some(v);
-        }
-    };
-    s.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
-                  "params": {"clientInfo": {"name": "hotch", "title": "Hotch", "version": env!("CARGO_PKG_VERSION")}}}));
-    if response(&mut s, 1).is_none() {
-        return Usage::failed("codex", "codex app-server did not answer");
-    }
-    s.send(json!({"jsonrpc": "2.0", "method": "initialized"}));
-    // `params` must be null: `{}` is silently dropped.
     s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read", "params": null}));
-    match response(&mut s, 2) {
+    match codex_response(&s, 2, end) {
         Some(v) if v.get("result").is_some() => parse_codex(&v["result"]),
         Some(v) => Usage::failed("codex", v["error"]["message"].as_str().unwrap_or("error").to_string()),
         None => Usage::failed("codex", "codex app-server timed out"),
     }
+}
+
+/// Read the vendor's thread states instead of guessing approval from file age.
+pub fn codex_threads() -> Option<Vec<Value>> {
+    let mut s = codex_session().ok()?;
+    s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "thread/list",
+        "params": {"limit": 100, "sortKey": "updated_at"}}));
+    codex_response(&s, 2, deadline())?["result"]["data"].as_array().cloned()
+}
+
+fn codex_response(s: &Session, id: i64, end: std::time::Instant) -> Option<Value> {
+    loop {
+        let v = s.next(end)?;
+        if v["id"] == id {
+            return Some(v);
+        }
+    }
+}
+
+fn codex_session() -> Result<Session, String> {
+    let Some(bin) = locate("codex", &[".local/bin/codex", ".npm-global/bin/codex"]) else {
+        return Err("Codex CLI not installed".into());
+    };
+    let mut s = match Session::start(Command::new(&bin).arg("app-server")) {
+        Ok(s) => s,
+        Err(e) => return Err(format!("could not start codex: {e}")),
+    };
+    let end = deadline();
+    s.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                  "params": {"clientInfo": {"name": "hotch", "title": "Hotch", "version": env!("CARGO_PKG_VERSION")}}}));
+    if codex_response(&s, 1, end).is_none_or(|v| v.get("error").is_some()) {
+        return Err("codex app-server did not answer".into());
+    }
+    s.send(json!({"jsonrpc": "2.0", "method": "initialized"}));
+    Ok(s)
 }
 
 /// Port of `CodexAppServer.parse(result:)`. The window length, not the bucket
@@ -381,14 +438,17 @@ pub fn parse_codex(result: &Value) -> Usage {
             format!("{n} reset credits")
         });
     }
-    let error = windows.is_empty().then(|| "no Codex limits on this plan".to_string());
+    if windows.is_empty() {
+        extras.push("No Codex limits on this plan".into());
+    }
     let plan = plan_name(snap["planType"].as_str().or(result["planType"].as_str()));
     Usage {
         provider: "codex",
         windows,
         extras,
         plan,
-        error,
+        error: None,
+        ..Default::default()
     }
 }
 
@@ -481,6 +541,28 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_refresh_keeps_age_and_error_then_expires() {
+        let good = Usage {
+            provider: "claude",
+            fetched_at: Some(100),
+            windows: vec![Window {
+                label: "Session".into(),
+                percent: 42.0,
+                resets_at: None,
+            }],
+            ..Default::default()
+        };
+        let stale = retain_last_good(Usage::failed("claude", "Signed out"), Some(&good), 160);
+        assert_eq!(stale.fetched_at, Some(100));
+        assert_eq!(stale.error.as_deref(), Some("Signed out"));
+        assert!(stale.stale);
+        let expired = retain_last_good(Usage::failed("claude", "Offline"), Some(&stale), 7300);
+        assert!(expired.windows.is_empty());
+        let no_limits = parse_codex(&json!({"rateLimits": {}}));
+        assert!(retain_last_good(no_limits, Some(&good), 160).windows.is_empty());
+    }
 
     #[test]
     fn claude_limits_rows_win() {

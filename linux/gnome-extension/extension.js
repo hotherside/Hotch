@@ -15,6 +15,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {mergeUsage, readingStatus} from './data.js';
 
 const REFRESH_SECONDS = 60;
 const STALE_SECONDS = 30;
@@ -294,13 +295,8 @@ class HotchIndicator extends PanelMenu.Button {
     }
 
     _apply(fresh) {
-        // A failed read (rate limited, offline) keeps the last good one, as
-        // the Mac app does, rather than blanking the panel.
         const previous = this._data?.usage ?? [];
-        fresh.usage = fresh.usage.map(u => {
-            const old = previous.find(o => o.provider === u.provider);
-            return u.windows.length === 0 && old?.windows.length ? old : u;
-        });
+        fresh.usage = mergeUsage(fresh.usage, previous, now());
         this._data = fresh;
         this._checkedAt = now();
         this._render();
@@ -325,7 +321,7 @@ class HotchIndicator extends PanelMenu.Button {
                 button.remove_style_pseudo_class('checked');
         }
         this._page.destroy_all_children();
-        this._checkedLabel.text = this._checkedAt ? `Checked ${ago(now() - this._checkedAt)}` : 'Checking…';
+        this._checkedLabel.text = this._checkedAt ? `Last check ${ago(now() - this._checkedAt)}` : 'Checking…';
 
         if (!this._data) {
             this._page.add_child(label('Reading usage…', 'hotch-muted hotch-empty'));
@@ -435,6 +431,8 @@ class HotchIndicator extends PanelMenu.Button {
         }
         if (u.plan)
             text.add_child(label(`${u.plan} plan`, 'hotch-muted'));
+        if (u.stale)
+            text.add_child(label(readingStatus(u, now()), 'hotch-sub'));
         row.add_child(text);
         return row;
     }
@@ -492,6 +490,8 @@ class HotchIndicator extends PanelMenu.Button {
                 tile.add_child(label(extra, 'hotch-muted'));
             if (u.plan)
                 tile.add_child(label(`${u.plan} plan`, 'hotch-muted'));
+            if (u.stale)
+                tile.add_child(label(readingStatus(u, now()), 'hotch-sub'));
             this._page.add_child(tile);
         }
     }

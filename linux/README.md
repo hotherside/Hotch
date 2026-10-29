@@ -63,6 +63,10 @@ On Ubuntu the tray uses the AppIndicator extension, which is enabled by default.
 
 These are account metering reads. They do not run model inference. Session titles and states are read locally from `~/.claude` and `~/.codex`, and transcript text never leaves the parser.
 
+Codex session status comes from the local app-server's `thread/list`, including approval and input flags when the server reports them. Recent rollout files are a fallback, including older threads resumed in their original directory; file silence alone is shown as idle rather than a confirmed end. A separate app-server can report a thread as `notLoaded`, so status availability depends on the installed Codex version.
+
+Failed usage updates show the provider error alongside the last successful reading. Cached readings retain their original timestamp and expire after two hours.
+
 Grok, Kimi and DeepSeek balances, Focus, clipboard history, Backpack and the notch/edge views are macOS only for now.
 
 ## CLI
@@ -80,6 +84,8 @@ hotch all --json # everything, for scripts and status bars
 
 ```sh
 cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --check
+cargo build --release
+node --test tests/*.test.mjs
 ```
 
 To work on the extension without logging out, run it in a nested shell (`sudo apt install mutter-dev-bin`). With `HOTCH_PREVIEW` set, the extension opens each tab and saves a screenshot to `<prefix>-<tab>.png`:

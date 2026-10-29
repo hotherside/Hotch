@@ -42,6 +42,7 @@ assets = [
     ["target/release/hotch", "usr/bin/", "755"],
     ["gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
     ["gnome-extension/extension.js", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
+    ["gnome-extension/data.js", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
     ["gnome-extension/stylesheet.css", "usr/share/gnome-shell/extensions/hotch@hotherside.com/", "644"],
     ["gnome-extension/icons/*", "usr/share/gnome-shell/extensions/hotch@hotherside.com/icons/", "644"],
     ["hotch.desktop", "usr/share/applications/", "644"],

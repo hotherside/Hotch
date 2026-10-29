@@ -2,8 +2,9 @@
 //! Port of the parts of Sources/Hotch/Providers/SessionMonitor.swift a glance
 //! needs. Only names and states are read; transcript text never leaves here.
 
-use crate::usage::home;
+use crate::usage::{self, home};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -33,6 +34,7 @@ impl Activity {
 
 #[derive(Debug, Clone)]
 pub struct Session {
+    pub id: String,
     pub provider: &'static str,
     pub name: String,
     pub project: String,
@@ -45,6 +47,7 @@ pub struct Session {
 impl Session {
     pub fn to_json(&self) -> Value {
         json!({
+            "id": self.id,
             "provider": self.provider, "name": self.name, "project": self.project,
             "activity": self.activity.as_str(),
             "waitingFor": self.waiting_for,
@@ -63,7 +66,8 @@ const TAIL_BYTES: u64 = 256 * 1024;
 pub fn scan() -> Vec<Session> {
     let now = SystemTime::now();
     let mut out = claude_sessions(now);
-    out.extend(codex_sessions(now));
+    let threads = usage::codex_threads().unwrap_or_default();
+    out.extend(codex_sessions(&home().join(".codex"), now, &threads));
     out.sort_by(|a, b| a.activity.cmp(&b.activity).then(b.last_event.cmp(&a.last_event)));
     out.truncate(MAX_SESSIONS);
     out
@@ -119,6 +123,7 @@ fn claude_sessions(now: SystemTime) -> Vec<Session> {
         };
         let status_at = d["statusUpdatedAt"].as_f64().map(epoch);
         out.push(Session {
+            id: id.to_string(),
             provider: "claude",
             name,
             project: project_name(cwd),
@@ -186,53 +191,123 @@ fn title(lines: &[Value]) -> Option<String> {
 
 // MARK: - Codex
 
-/// Codex has no live registry: rollout files under `sessions/YYYY/MM/DD/`
-/// are named with the session UUID and grow while it runs, so their mtime is
-/// the liveness signal. Today's and yesterday's folders only.
-fn codex_sessions(now: SystemTime) -> Vec<Session> {
-    let root = home().join(".codex");
-    let names = codex_names(&root);
-    let mut out = Vec::new();
-    for days_back in 0..2 {
-        let (y, m, d) = civil_from_days(unix(now) / 86400 - days_back);
-        let dir = root.join(format!("sessions/{y:04}/{m:02}/{d:02}"));
-        for file in read_dir(&dir) {
-            let fname = file.file_name().and_then(|f| f.to_str()).unwrap_or("");
-            let Some(base) = fname.strip_suffix(".jsonl.zst").or(fname.strip_suffix(".jsonl")) else {
-                continue;
-            };
-            if base.len() <= 36 {
-                continue;
+/// Prefer app-server status. Rollouts fill gaps when the server is unavailable,
+/// including old threads resumed in their original dated directory.
+fn codex_sessions(root: &Path, now: SystemTime, threads: &[Value]) -> Vec<Session> {
+    let names = codex_names(root);
+    let mut out: Vec<Session> = threads.iter().filter_map(|t| codex_thread(t, now)).collect();
+    let seen: HashSet<String> = threads
+        .iter()
+        .filter_map(|t| t["id"].as_str().map(String::from))
+        .collect();
+    for year in read_dir(&root.join("sessions")) {
+        for month in read_dir(&year) {
+            for day in read_dir(&month) {
+                for file in read_dir(&day) {
+                    let fname = file.file_name().and_then(|f| f.to_str()).unwrap_or("");
+                    let Some(base) = fname.strip_suffix(".jsonl.zst").or(fname.strip_suffix(".jsonl")) else {
+                        continue;
+                    };
+                    if base.len() <= 36 {
+                        continue;
+                    }
+                    let Some(id) = base.get(base.len() - 36..) else {
+                        continue;
+                    };
+                    if seen.contains(id) {
+                        continue;
+                    }
+                    let Some(mtime) = mtime(&file) else {
+                        continue;
+                    };
+                    let age = now.duration_since(mtime).unwrap_or_default();
+                    if age >= RECENT_CUTOFF {
+                        continue;
+                    }
+                    out.push(Session {
+                        id: id.to_string(),
+                        provider: "codex",
+                        name: names
+                            .iter()
+                            .rev()
+                            .find(|(i, _)| i == id)
+                            .map(|(_, n)| n.clone())
+                            .unwrap_or("Codex session".into()),
+                        project: if fname.ends_with(".zst") {
+                            String::new()
+                        } else {
+                            codex_project(&file)
+                        },
+                        activity: rollout_activity(&file, age),
+                        waiting_for: None,
+                        last_event: mtime,
+                    });
+                }
             }
-            let id = &base[base.len() - 36..];
-            let Some(mtime) = mtime(&file) else { continue };
-            let age = now.duration_since(mtime).unwrap_or_default();
-            if age >= RECENT_CUTOFF {
-                continue;
-            }
-            out.push(Session {
-                provider: "codex",
-                name: names
-                    .iter()
-                    .find(|(i, _)| i == id)
-                    .map(|(_, n)| n.clone())
-                    .unwrap_or("Codex session".into()),
-                project: if fname.ends_with(".zst") {
-                    String::new()
-                } else {
-                    codex_project(&file)
-                },
-                activity: if age < ACTIVE_WINDOW {
-                    Activity::Working
-                } else {
-                    Activity::Ended
-                },
-                waiting_for: None,
-                last_event: mtime,
-            });
         }
     }
     out
+}
+
+fn codex_thread(t: &Value, now: SystemTime) -> Option<Session> {
+    if t["parentThreadId"].as_str().is_some() {
+        return None;
+    }
+    let id = t["id"].as_str()?;
+    let last = usage::date(&t["updatedAt"]).or_else(|| usage::date(&t["createdAt"]))?;
+    let last_event = epoch(last as f64);
+    let age = now.duration_since(last_event).unwrap_or_default();
+    let flags = t["status"]["activeFlags"].as_array();
+    let has = |flag: &str| flags.is_some_and(|a| a.iter().any(|v| v == flag));
+    let (activity, waiting_for) = match t["status"]["type"].as_str() {
+        Some("active") if has("waitingOnApproval") => (Activity::NeedsInput, Some("approval".into())),
+        Some("active") if has("waitingOnUserInput") => (Activity::NeedsInput, Some("your input".into())),
+        Some("active") => (Activity::Working, None),
+        Some("idle") => (Activity::Waiting, None),
+        _ if age < Duration::from_secs(2 * 3600) => (Activity::Waiting, None),
+        _ => (Activity::Ended, None),
+    };
+    if activity == Activity::Ended && age >= RECENT_CUTOFF {
+        return None;
+    }
+    Some(Session {
+        id: id.into(),
+        provider: "codex",
+        name: t["name"]
+            .as_str()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or("Codex session")
+            .into(),
+        project: project_name(t["cwd"].as_str().unwrap_or("")),
+        activity,
+        waiting_for,
+        last_event,
+    })
+}
+
+fn rollout_activity(file: &Path, age: Duration) -> Activity {
+    // File silence alone cannot mean a session ended. A completed turn is idle.
+    let completed = tail_lines(file)
+        .iter()
+        .rev()
+        .find_map(|l| {
+            if l["type"] != "event_msg" {
+                return None;
+            }
+            match l["payload"]["type"].as_str()? {
+                "task_complete" | "turn_complete" | "turn_aborted" => Some(true),
+                "task_started" | "turn_started" => Some(false),
+                _ => None,
+            }
+        })
+        .unwrap_or(false);
+    if !completed && age < ACTIVE_WINDOW {
+        Activity::Working
+    } else if age < Duration::from_secs(2 * 3600) {
+        Activity::Waiting
+    } else {
+        Activity::Ended
+    }
 }
 
 fn codex_names(root: &Path) -> Vec<(String, String)> {
@@ -312,28 +387,51 @@ fn epoch(n: f64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs_f64(secs.max(0.0))
 }
 
-fn unix(t: SystemTime) -> i64 {
-    t.duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// Howard Hinnant's civil-from-days (UTC).
-pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719468;
-    let era = z.div_euclid(146097);
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (yoe + era * 400 + i64::from(m <= 2), m, d)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_status_beats_file_age() {
+        let now = epoch(10000.0);
+        let thread = json!({"id": "a", "name": "Review", "updatedAt": 100,
+            "status": {"type": "active", "activeFlags": ["waitingOnApproval"]}});
+        let session = codex_thread(&thread, now).unwrap();
+        assert_eq!(session.activity, Activity::NeedsInput);
+        assert_eq!(session.waiting_for.as_deref(), Some("approval"));
+        let mut working = thread.clone();
+        working["status"]["activeFlags"] = json!([]);
+        assert_eq!(codex_thread(&working, now).unwrap().activity, Activity::Working);
+        working["status"] = json!({"type": "idle"});
+        assert_eq!(codex_thread(&working, now).unwrap().activity, Activity::Waiting);
+        working["parentThreadId"] = json!("parent");
+        assert!(codex_thread(&working, now).is_none());
+    }
+
+    #[test]
+    fn resumed_old_rollout_is_found_and_server_state_is_not_duplicated() {
+        let root = std::env::temp_dir().join(format!("hotch-rollout-test-{}", std::process::id()));
+        let dir = root.join("sessions/2024/01/01");
+        fs::create_dir_all(&dir).unwrap();
+        let id = "00000000-0000-0000-0000-000000000001";
+        let file = dir.join(format!("rollout-2024-01-01T00-00-00-{id}.jsonl"));
+        fs::write(
+            &file,
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}\n",
+        )
+        .unwrap();
+        let now = SystemTime::now();
+        let local = codex_sessions(&root, now, &[]);
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].activity, Activity::Waiting);
+        assert_eq!(rollout_activity(&file, Duration::from_secs(120)), Activity::Waiting);
+        let thread = json!({"id": id, "updatedAt": usage::unix_now(),
+            "status": {"type": "active", "activeFlags": ["waitingOnUserInput"]}});
+        let merged = codex_sessions(&root, now, &[thread]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].waiting_for.as_deref(), Some("your input"));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn activity_from_transcript() {
@@ -357,7 +455,5 @@ mod tests {
     fn names_and_dates() {
         assert_eq!(project_name("/home/a/Hotch/.claude/worktrees/upbeat-x"), "Hotch");
         assert_eq!(project_name("/home/a/Hotch/"), "Hotch");
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(20752), (2026, 10, 26));
     }
 }
