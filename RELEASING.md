@@ -6,6 +6,7 @@ This guide describes a maintainer release from a clean checkout. The release ver
 
 1. Review the changes and update `CHANGELOG.md`.
 2. Set the intended version in `Makefile` and the development fallback in `Sources/Hotch/About.swift` to the same value.
+   Update `linux/Cargo.toml`, its `hotch` entry in `linux/Cargo.lock`, and `linux/gnome-extension/metadata.json` (`version-name`) as well. Run `python3 linux/tools/check_version.py`; every version must agree. Unreleased changes stay under `Unreleased` in the changelog until a release version is chosen.
 3. Run `make check` and review the resulting app on a Mac. Check the version with `make print-version`.
 4. Ensure the release notes accurately state supported macOS versions, known provider limitations, and whether the build is signed and notarized.
 
@@ -37,3 +38,24 @@ The Makefile contains additional packaging targets for maintainers (`make dmg`, 
 ## Publish
 
 Review the DMG on a clean macOS account or test machine. Confirm the app opens, provider connection steps match current behavior, and privacy notes remain accurate. Publish the release notes and artifacts in the repository's Releases interface, attach checksums if useful, and verify the downloaded artifact after upload. Do not publish credentials, local logs, or user data.
+
+## Experimental Linux assets
+
+The `Linux release assets` workflow runs when a release is published. It checks out that release's tag, requires it to match all source versions, tests native amd64 and arm64 builds, and attaches two `.deb` packages, a GNOME extension ZIP, and `SHA256SUMS-linux.txt` to the existing release. Its write permission is limited to the final upload job. It does not create a release, tag, DMG or notarization submission. To retry for an existing release, run it manually with that release tag.
+
+Before publishing, follow the [Linux desktop validation checklist](linux/README.md#desktop-validation) on a supported GNOME desktop. CI verifies parsers, state transitions, extension lifecycle with API doubles, CLI fixtures, version alignment and package contents; it does not certify GNOME rendering, Wayland interactions or a live provider account. State that limitation and the remaining platform gaps in the release notes, credit Simon (@sire6) for the original port, and label Linux downloads experimental.
+
+For local Linux packaging:
+
+```sh
+python3 linux/tools/check_version.py
+cd linux
+cargo test --locked
+cargo build --release --locked
+node --test tests/*.test.mjs
+cargo install cargo-deb --locked
+cargo deb --no-build
+python3 tools/package_extension.py
+```
+
+Install the `.deb` on the architecture it was built for and verify the downloaded files against the Linux checksums. Ubuntu 24.04 or newer is the binary build baseline; the GNOME frontend specifically requires Shell 48, 49 or 50. The extension ZIP alone still requires the matching `hotch` binary. Keep Linux distribution separate from Apple's signing/notarization claims.

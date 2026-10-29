@@ -58,14 +58,16 @@ impl Usage {
 }
 
 pub fn fetch_all() -> Vec<Usage> {
-    let claude = thread::spawn(claude);
-    let codex = codex();
+    let providers = crate::settings::Settings::load().providers();
+    let claude = providers.iter().any(|p| p == "claude").then(|| thread::spawn(claude));
+    let codex = providers.iter().any(|p| p == "codex").then(codex);
     let now = unix_now();
     vec![
-        claude.join().unwrap_or_else(|_| Usage::failed("claude", "crashed")),
+        claude.map(|c| c.join().unwrap_or_else(|_| Usage::failed("claude", "crashed"))),
         codex,
     ]
     .into_iter()
+    .flatten()
     .map(|mut u| {
         if u.error.is_none() && !u.windows.is_empty() {
             u.fetched_at = Some(now);

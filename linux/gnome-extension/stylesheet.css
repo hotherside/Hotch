@@ -31,7 +31,7 @@
 .hotch-tab:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25); }
 .hotch-tab-inner { spacing: 3px; }
 .hotch-tab-icon { icon-size: 16px; }
-.hotch-tab-label { font-size: 11px; font-weight: 600; }
+.hotch-tab-label { font-size: 10px; font-weight: 600; }
 
 /* Pages */
 .hotch-page { spacing: 8px; }
@@ -123,3 +123,45 @@
 .hotch-pill-working-claude { font-size: 13px; font-weight: 700; color: #f0865f; }
 .hotch-pill-working-codex { font-size: 13px; font-weight: 700; color: #969aff; }
 .hotch-home-label { color: rgba(255, 255, 255, 0.66); }
+
+/* Settings and local tools */
+.hotch-scroll { max-height: 420px; }
+.hotch-choices { spacing: 6px; }
+.hotch-action {
+  padding: 9px 8px; border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.07); color: #f5f5f7;
+  font-size: 12px;
+}
+.hotch-action:hover, .hotch-action:checked { background-color: rgba(150, 154, 255, 0.25); }
+.hotch-action:focus, .hotch-entry:focus { box-shadow: inset 0 0 0 2px #969aff; }
+.hotch-entry { padding: 10px; border-radius: 9px; color: #f5f5f7; background-color: rgba(255, 255, 255, 0.08); }
+.hotch-paragraph { max-width: 342px; }
+.hotch-focus-clock { font-size: 42px; font-weight: 700; font-feature-settings: "tnum"; text-align: center; padding: 8px; }
+.hotch-title { max-width: 270px; }
+.hotch-sub { max-width: 310px; }
+
+/* Orb and screen edges share the same card. */
+.hotch-orb { border-radius: 48px; padding: 12px; }
+.hotch-orb-ring { width: 46px; height: 46px; }
+.hotch-edge { padding: 10px; border-radius: 14px; }
+.hotch-edge-left { border-radius: 0 14px 14px 0; }
+.hotch-edge-right { border-radius: 14px 0 0 14px; }
+.hotch-edge-bottom { border-radius: 14px 14px 0 0; }
+
+/* Explicit theme choice, or the desktop color-scheme preference. */
+.hotch-menu.hotch-light .popup-menu-content, .hotch-pill.hotch-light {
+  background-color: rgba(246, 246, 249, 0.98); color: #202024;
+  border-color: rgba(0, 0, 0, 0.14);
+}
+.hotch-light .hotch-card, .hotch-light .hotch-title, .hotch-light .hotch-percent,
+.hotch-light .hotch-window-label, .hotch-light .hotch-pill-value, .hotch-light .hotch-pill-session { color: #202024; }
+.hotch-light .hotch-sub, .hotch-light .hotch-row-label, .hotch-light .hotch-muted,
+.hotch-light .hotch-footer-label, .hotch-light .hotch-section, .hotch-light .hotch-pill-key { color: #595962; }
+.hotch-light .hotch-tile, .hotch-light .hotch-tabs, .hotch-light .hotch-action,
+.hotch-light .hotch-entry { background-color: rgba(0, 0, 0, 0.055); color: #202024; }
+.hotch-light .hotch-action:hover, .hotch-light .hotch-action:checked,
+.hotch-light .hotch-tab:checked { background-color: rgba(100, 104, 215, 0.18); color: #202024; }
+.hotch-light .hotch-tab { color: #595962; }
+.hotch-light .hotch-divider, .hotch-light .hotch-pill-divider,
+.hotch-light .hotch-pill-sep { background-color: rgba(0, 0, 0, 0.12); }
+.hotch-light .hotch-pill-critical { color: #bc201b; }

@@ -65,9 +65,16 @@ const TAIL_BYTES: u64 = 256 * 1024;
 
 pub fn scan() -> Vec<Session> {
     let now = SystemTime::now();
-    let mut out = claude_sessions(now);
-    let threads = usage::codex_threads().unwrap_or_default();
-    out.extend(codex_sessions(&home().join(".codex"), now, &threads));
+    let providers = crate::settings::Settings::load().providers();
+    let mut out = if providers.iter().any(|p| p == "claude") {
+        claude_sessions(now)
+    } else {
+        vec![]
+    };
+    if providers.iter().any(|p| p == "codex") {
+        let threads = usage::codex_threads().unwrap_or_default();
+        out.extend(codex_sessions(&home().join(".codex"), now, &threads));
+    }
     out.sort_by(|a, b| a.activity.cmp(&b.activity).then(b.last_event.cmp(&a.last_event)));
     out.truncate(MAX_SESSIONS);
     out

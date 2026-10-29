@@ -16,6 +16,21 @@ make check
 
 ## Good first contributions
 
+For the experimental Linux implementation, use a current Rust toolchain and Node.js 24 or later:
+
+```sh
+python3 linux/tools/check_version.py
+cd linux
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo build --release --locked
+node --check gnome-extension/extension.js
+node --test tests/*.test.mjs
+```
+
+The CLI and pure state tests also run on macOS; Linux CI additionally builds the tray and Debian package. GNOME UI changes need the [desktop validation checklist](linux/README.md#desktop-validation), with sanitized screenshots when available. Keep the support matrix, privacy notes, packaging file list and release versions consistent with changed behavior.
+
 - Improve provider setup explanations or error states, based on current provider behavior.
 - Fix a clear accessibility, layout, or keyboard-navigation issue.
 - Add a focused parser or state-machine check for a bug that can be tested without personal account data.

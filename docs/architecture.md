@@ -24,3 +24,13 @@ Clipboard history is in-memory, text-only, and optional. Preserve its size limit
 ## Checks
 
 `make check` is the repository's combined build and local validation entry point. `make helper-selftest` runs the helper's scripted state-machine check without issuing real power-management commands. CI can compile and run scripted checks, but physical Mac sensor behavior, signing prompts, and lid-close sleep behavior require manual validation on supported hardware.
+
+## Experimental Linux port
+
+`linux/` is an independent Rust executable, with a GNOME Shell frontend in `linux/gnome-extension/`. It shares no runtime code with the macOS SwiftUI views. The binary reads local vendor CLIs and session metadata, and exposes stable JSON for the frontend or scripts; its tray uses the same providers and settings.
+
+`settings.rs` and the GNOME model validate preferences in `~/.config/hotch/gnome.json` (or `XDG_CONFIG_HOME`). The extension watches that file for CLI edits. Provider toggles gate both usage child processes and session scanning. Usage errors retain an explicitly stale reading for at most two hours. Codex thread status takes precedence over the local rollout fallback.
+
+GNOME owns placement, appearance, Focus and clipboard state. Focus stores only the current run with wall-clock timing. Clipboard contents stay in memory, are disabled by default, skip supplied sensitive MIME markers, and are cleared on disable. Every signal, process and main-loop source is cleaned up when the extension stops. Tests cover pure state, CLI fixtures and the extension lifecycle with GNOME API doubles; desktop rendering and Wayland behavior still require Linux validation.
+
+Linux checks build Debian packages and an extension ZIP. The separate release workflow builds amd64/arm64 assets from an existing release tag, checks all macOS/Linux versions, and uploads Linux checksums. See the Linux README for feature gaps and the desktop validation checklist.
