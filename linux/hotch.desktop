@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hotch
+Comment=AI plan usage, agent sessions and system load in the tray
+Exec=hotch
+Icon=hotch
+Terminal=false
+Categories=Utility;Monitor;
+X-GNOME-Autostart-enabled=true

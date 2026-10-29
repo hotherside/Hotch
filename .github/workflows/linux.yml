@@ -1,0 +1,52 @@
+name: Linux checks
+
+on:
+  push:
+    paths: ["linux/**", ".github/workflows/linux.yml"]
+  pull_request:
+    paths: ["linux/**", ".github/workflows/linux.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Lint, test and build
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo build --release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check extension data policy and syntax
+        run: |
+          node --check gnome-extension/extension.js
+          node --test tests/*.test.mjs
+
+      - name: Smoke test
+        run: target/release/hotch all --json
+
+      - name: Build Debian package
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotch-deb
+          path: linux/target/debian/*.deb
