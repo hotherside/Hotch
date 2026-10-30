@@ -253,10 +253,14 @@ pub fn run() {
             h.system = sys;
             h.sessions = found;
         });
-        // At most daily, and only while enabled; quiet when offline.
-        let checking = std::thread::spawn(|| update::status(update::Check::IfDue));
+        // At most daily, and only while enabled; quiet when offline. The check
+        // reports on its own, so a slow network never holds back usage.
+        let checker = handle.clone();
+        std::thread::spawn(move || {
+            let status = update::status(update::Check::IfDue);
+            checker.update(|h| h.update = status);
+        });
         let fresh = usage::fetch_all();
-        let status = checking.join().unwrap_or_default();
         let updated = handle.update(|h| {
             let merged = fresh
                 .into_iter()
@@ -266,7 +270,6 @@ pub fn run() {
                 })
                 .collect();
             h.usages = merged;
-            h.update = status;
         });
         if updated.is_none() {
             return;

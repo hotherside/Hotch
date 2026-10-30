@@ -18,23 +18,29 @@ const RELEASES = [
     {tag_name: 'v1.0.0', assets: deb('1.0.0')},
 ];
 
+// A scratch home whose PATH holds only the fake curl.
+function sandbox() {
+    const home = mkdtempSync(join(tmpdir(), 'hotch-update-test-'));
+    const bin = join(home, 'bin');
+    const calls = join(home, 'curl-calls');
+    const env = {...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'),
+        XDG_CACHE_HOME: join(home, '.cache'), PATH: bin};
+    const run = args => execFileSync(binary, args, {env, timeout: 15000, encoding: 'utf8'});
+    const json = args => JSON.parse(run([...args, '--json']));
+    mkdirSync(bin, {recursive: true});
+    json(['settings', 'set', 'providers', '[]']);
+    return {home, env, calls, run, json,
+        curl: answer => writeFileSync(join(bin, 'curl'),
+            `#!/bin/sh\nprintf '%s\\n' "$@" >> '${calls}'\n${answer}\n`, {mode: 0o755}),
+        requests: () => existsSync(calls)
+            ? readFileSync(calls, 'utf8').split('\n').filter(arg => arg.startsWith('https://')).length : 0};
+}
+
 test('update check finds the newest Linux release, checks daily, and honours skip and the preference',
     {skip: !debian && 'update checks cover the amd64 and arm64 Linux packages'}, () => {
-        const home = mkdtempSync(join(tmpdir(), 'hotch-update-test-'));
-        const bin = join(home, 'bin');
-        const calls = join(home, 'curl-calls');
+        const {home, env, calls, run, json, curl, requests} = sandbox();
         const cache = join(home, '.cache/hotch/update.json');
-        const env = {...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'),
-            XDG_CACHE_HOME: join(home, '.cache'), PATH: bin};
-        const curl = answer => writeFileSync(join(bin, 'curl'),
-            `#!/bin/sh\nprintf '%s\\n' "$@" >> '${calls}'\n${answer}\n`, {mode: 0o755});
-        const run = args => execFileSync(binary, args, {env, timeout: 15000, encoding: 'utf8'});
-        const json = args => JSON.parse(run([...args, '--json']));
-        const requests = () => existsSync(calls)
-            ? readFileSync(calls, 'utf8').split('\n').filter(arg => arg.startsWith('https://')).length : 0;
         try {
-            mkdirSync(bin, {recursive: true});
-            json(['settings', 'set', 'providers', '[]']);
             const current = run(['version']).trim().split(' ')[1];
             curl(`printf '%s' '${JSON.stringify(RELEASES)}'`);
 
@@ -77,6 +83,24 @@ test('update check finds the newest Linux release, checks daily, and honours ski
             json(['settings', 'set', 'updateChecks', 'false']);
             assert.equal(json(['all']).update.checkedAt, null);
             assert.equal(requests(), 3);
+        } finally {
+            rmSync(home, {recursive: true, force: true});
+        }
+    });
+
+test('a cache that cannot be written stops the automatic check rather than asking on every poll',
+    {skip: !debian && 'update checks cover the amd64 and arm64 Linux packages'}, () => {
+        const {home, env, json, curl, requests} = sandbox();
+        try {
+            writeFileSync(join(home, 'not-a-directory'), '');
+            env.XDG_CACHE_HOME = join(home, 'not-a-directory');
+            curl(`printf '%s' '${JSON.stringify(RELEASES)}'`);
+            for (let poll = 0; poll < 3; poll++)
+                assert.equal(json(['all']).update.checkedAt, null);
+            assert.equal(requests(), 0);
+            // Asked for explicitly, it still answers.
+            assert.equal(json(['update-check']).update.latest, '99.0.0');
+            assert.equal(requests(), 1);
         } finally {
             rmSync(home, {recursive: true, force: true});
         }

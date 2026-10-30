@@ -65,9 +65,11 @@ impl Settings {
         self.0["updateChecks"] != false
     }
 
-    /// The release the user chose to skip in the update notice.
+    /// The release the user chose to skip in the update notice, as the notice
+    /// names it: `v2.4.0` set by hand skips 2.4.0.
     pub fn skipped(&self) -> Option<&str> {
-        self.0["updateSkipped"].as_str().filter(|v| !v.is_empty())
+        let skipped = self.0["updateSkipped"].as_str().filter(|v| !v.is_empty())?;
+        Some(skipped.strip_prefix('v').unwrap_or(skipped))
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -148,8 +150,10 @@ mod tests {
         assert!(valid("updateChecks", &json!(false)));
         assert!(!valid("updateChecks", &json!("off")));
         assert!(valid("updateSkipped", &json!("2.4.0")));
+        assert!(valid("updateSkipped", &json!("v2.4.0")));
         assert!(valid("updateSkipped", &json!("")));
         assert!(!valid("updateSkipped", &json!("latest")));
+        assert!(!valid("updateSkipped", &json!("2.5.0-rc.1")));
     }
 
     #[test]
@@ -160,5 +164,6 @@ mod tests {
         let off = Settings(json!({"updateChecks": false, "updateSkipped": "2.4.0"}));
         assert!(!off.update_checks());
         assert_eq!(off.skipped(), Some("2.4.0"));
+        assert_eq!(Settings(json!({"updateSkipped": "v2.4.0"})).skipped(), Some("2.4.0"));
     }
 }

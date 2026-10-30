@@ -15,13 +15,16 @@ export function mergeUsage(fresh, previous, now) {
 const RELEASE_PAGE = 'https://github.com/hotherside/Hotch/releases/tag/';
 
 // The footer's update notice: a newer Linux release, not skipped, while
-// automatic checks are on. Only GitHub release pages are ever linked.
+// automatic checks are on. Only the GitHub release page of that very version
+// is ever linked.
 export function updateNotice(update, settings) {
     if (!update?.available || !settings.updateChecks || update.latest === settings.updateSkipped)
         return null;
-    if (typeof update.latest !== 'string' || typeof update.url !== 'string' || !update.url.startsWith(RELEASE_PAGE))
+    const version = update.latest;
+    const page = [`${RELEASE_PAGE}v${version}`, `${RELEASE_PAGE}${version}`];
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version) || !page.includes(update.url))
         return null;
-    return {version: update.latest, url: update.url};
+    return {version, url: update.url};
 }
 
 export function readingStatus(u, now) {
