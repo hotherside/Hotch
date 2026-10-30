@@ -345,8 +345,9 @@ class HotchIndicator extends PanelMenu.Button {
         });
     }
 
-    /// Check now: the answer lands in the cache the next poll reads, so a
-    /// failed check (offline, rate-limited) changes nothing on screen.
+    /// Check now: an answer lands in the cache the next poll reads. A check
+    /// that gets none (offline, rate-limited, no package for this machine)
+    /// says so in Settings only; the footer stays quiet.
     _checkForUpdates() {
         const bin = this._binary();
         if (!bin || this._updateProcess)
@@ -360,17 +361,24 @@ class HotchIndicator extends PanelMenu.Button {
             return;
         }
         this._updateProcess = proc;
+        this._updateFailure = null;
         this._render();
         proc.communicate_utf8_async(null, this._cancellable, (p, res) => {
             this._updateProcess = null;
+            let answer = null;
             try {
-                p.communicate_utf8_finish(res);
+                answer = JSON.parse(p.communicate_utf8_finish(res)[1]);
             } catch (e) {
-                if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-                    logError(e, 'hotch: update check failed');
+                if (e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                    return;
             }
-            if (!this._cancellable.is_cancelled())
-                this._refresh();
+            if (this._cancellable.is_cancelled())
+                return;
+            if (answer?.answered !== true)
+                this._updateFailure = {at: now(), unsupported: answer?.supported === false};
+            if (this._tab === 'settings')
+                this._render();
+            this._refresh();
         });
     }
 
@@ -739,9 +747,15 @@ class HotchIndicator extends PanelMenu.Button {
         // The release a check found, shown here even with automatic checks off.
         const release = updateNotice(u, {...s, updateChecks: true});
         const skipped = Boolean(u?.latest) && u.latest === s.updateSkipped && u.latest !== u.current;
+        // A Check now that got no answer shows until a later check answers.
+        const failure = this._updateFailure;
         let status = 'Not checked yet';
         if (this._updateProcess)
             status = 'Checking GitHub…';
+        else if (failure?.unsupported)
+            status = 'Update checks cover the amd64 and arm64 Linux packages only';
+        else if (failure && !(u?.checkedAt >= failure.at))
+            status = 'Could not check right now; try again later';
         else if (release)
             status = `Hotch ${release.version} is available`;
         else if (skipped)

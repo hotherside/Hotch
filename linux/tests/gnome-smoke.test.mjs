@@ -91,7 +91,7 @@ function shell() {
             SubprocessFlags: {}, Subprocess: {new: argv => {
                 const proc = {argv, force_exit() { this.exited = true; },
                     communicate_utf8_async(_a, _b, callback) { this.callback = callback; },
-                    communicate_utf8_finish() { return [true, JSON.stringify(fixture)]; }};
+                    communicate_utf8_finish() { return [true, this.output ?? JSON.stringify(fixture)]; }};
                 processes.push(proc);
                 return proc;
             }}},
@@ -180,7 +180,7 @@ test('background provider refresh preserves Focus input widgets', () => {
 const texts = actor => [actor.text, actor.label, ...actor.children.flatMap(texts)].filter(t => typeof t === 'string');
 
 test('update notice opens the release page, skips a version and stays off when disabled', () => {
-    const {extension: e, launched, processes} = shell();
+    const {extension: e, launched, processes, advance} = shell();
     e.enable();
     const indicator = e._indicator;
     const release = {current: '2.3.0', latest: '2.4.0', checkedAt: 1000, available: true,
@@ -216,8 +216,31 @@ test('update notice opens the release page, skips a version and stays off when d
     const check = processes.at(-1);
     assert.equal(check.argv.join(' '), '/fixture/hotch-bin update-check --json');
     assert.ok(texts(indicator._page).includes('Checking GitHub…'));
+    check.output = JSON.stringify({update: release, answered: true, supported: true});
     check.callback(check, null);
     assert.equal(indicator._updateProcess, null);
+    assert.ok(texts(indicator._page).includes('Hotch 2.5.0 is available'));
     assert.equal(processes.at(-1).argv.join(' '), '/fixture/hotch-bin all --json');
+
+    // Offline or rate-limited: Settings says so; the footer stays quiet.
+    advance(3600);
+    const settings = () => indicator._page.children.flatMap(c => [c, ...c.children]);
+    const failed = () => {
+        settings().find(c => c.label === 'Check now').emit('clicked');
+        return processes.at(-1);
+    };
+    let offline = failed();
+    offline.output = JSON.stringify({update: {...release, available: false}, answered: false, supported: true});
+    offline.callback(offline, null);
+    assert.ok(texts(indicator._page).includes('Could not check right now; try again later'));
+    assert.equal(indicator._updateRow.visible, false);
+    offline = failed();
+    offline.output = 'not json';
+    offline.callback(offline, null);
+    assert.ok(texts(indicator._page).includes('Could not check right now; try again later'));
+    const unsupported = failed();
+    unsupported.output = JSON.stringify({update: {}, answered: false, supported: false});
+    unsupported.callback(unsupported, null);
+    assert.ok(texts(indicator._page).includes('Update checks cover the amd64 and arm64 Linux packages only'));
     e.disable();
 });

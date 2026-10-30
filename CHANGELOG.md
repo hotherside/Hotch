@@ -5,6 +5,7 @@ Notable user-facing changes are recorded here.
 ## Unreleased
 
 - Linux: say when a newer Linux release is out, checking GitHub at most once a day and on demand (`hotch update-check`). A quiet line in the GNOME card footer and a tray menu item link to the release page, with **Skip this version**; Hotch never downloads or installs updates. Turn it off in Settings or with `hotch settings set updateChecks false`. Releases that change only macOS no longer attach Linux packages, so Linux users hear only about releases that change Linux.
+- Linux: **Check now** in Settings says when it could not check (offline, rate-limited, or no package for this machine). `hotch settings set updateSkipped` accepts `v2.4.0` as well as `2.4.0`.
 
 ## 2.3.0
 
