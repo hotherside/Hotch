@@ -4,7 +4,10 @@ export const HOMES = [
     ['edge-left', 'Left edge'], ['edge-right', 'Right edge'], ['edge-bottom', 'Bottom edge'],
 ];
 export const DEFAULTS = {home: 'panel', theme: 'system', displayMode: 'used',
-    refreshSeconds: 60, providers: ['claude', 'codex'], clipboardEnabled: false};
+    refreshSeconds: 60, providers: ['claude', 'codex'], clipboardEnabled: false,
+    updateChecks: true, updateSkipped: ''};
+// Mirrors Version::parse in src/update.rs.
+const VERSION = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
 export function normalizeSettings(raw = {}) {
     const result = {...DEFAULTS, providers: [...DEFAULTS.providers]};
@@ -16,6 +19,8 @@ export function normalizeSettings(raw = {}) {
     if (Array.isArray(raw.providers) && raw.providers.every(p => ['claude', 'codex'].includes(p)))
         result.providers = [...new Set(raw.providers)];
     if (typeof raw.clipboardEnabled === 'boolean') result.clipboardEnabled = raw.clipboardEnabled;
+    if (typeof raw.updateChecks === 'boolean') result.updateChecks = raw.updateChecks;
+    if (raw.updateSkipped === '' || VERSION.test(raw.updateSkipped)) result.updateSkipped = raw.updateSkipped;
     for (const key of ['pillX', 'pillY'])
         if (Number.isFinite(raw[key])) result[key] = raw[key];
     result.focus = normalizeFocus(raw.focus);

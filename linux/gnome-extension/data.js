@@ -12,6 +12,18 @@ export function mergeUsage(fresh, previous, now) {
     });
 }
 
+const RELEASE_PAGE = 'https://github.com/hotherside/Hotch/releases/tag/';
+
+// The footer's update notice: a newer Linux release, not skipped, while
+// automatic checks are on. Only GitHub release pages are ever linked.
+export function updateNotice(update, settings) {
+    if (!update?.available || !settings.updateChecks || update.latest === settings.updateSkipped)
+        return null;
+    if (typeof update.latest !== 'string' || typeof update.url !== 'string' || !update.url.startsWith(RELEASE_PAGE))
+        return null;
+    return {version: update.latest, url: update.url};
+}
+
 export function readingStatus(u, now) {
     if (!u.stale)
         return '';

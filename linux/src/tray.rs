@@ -4,10 +4,12 @@
 use crate::sessions::{self, Session};
 use crate::settings::Settings;
 use crate::system::{self, System};
+use crate::update::{self, Release};
 use crate::usage::{self, Usage};
 use ksni::blocking::TrayMethods;
 use ksni::menu::StandardItem;
 use ksni::{Icon, MenuItem, ToolTip};
+use serde_json::json;
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime};
 
@@ -20,6 +22,7 @@ struct Hotch {
     system: System,
     refresh: mpsc::Sender<()>,
     settings: Settings,
+    update: update::Status,
 }
 
 impl Hotch {
@@ -36,6 +39,22 @@ impl Hotch {
             .filter_map(|u| u.windows.first())
             .map(|w| w.percent)
             .reduce(f64::max)
+    }
+
+    /// The release the update notice offers: newer, not skipped, checks on.
+    fn notice(&self) -> Option<Release> {
+        let latest = self.update.latest.clone()?;
+        let skipped = self.settings.skipped() == Some(latest.version.as_str());
+        (self.update.available && self.settings.update_checks() && !skipped).then_some(latest)
+    }
+
+    /// Saved to the shared preferences, so GNOME and the CLI skip it too.
+    fn skip(&mut self) {
+        let Some(release) = self.notice() else { return };
+        let mut settings = Settings::load();
+        settings.0["updateSkipped"] = json!(release.version);
+        let _ = settings.save();
+        self.settings = settings;
     }
 
     fn summary(&self) -> String {
@@ -154,6 +173,25 @@ impl ksni::Tray for Hotch {
         items.push(MenuItem::Separator);
         items.push(info(self.system.line()));
         items.push(MenuItem::Separator);
+        if let Some(release) = self.notice() {
+            items.push(
+                StandardItem {
+                    label: format!("Hotch {} is available…", release.version),
+                    activate: Box::new(move |_: &mut Self| open(&release.url)),
+                    ..Default::default()
+                }
+                .into(),
+            );
+            items.push(
+                StandardItem {
+                    label: "Skip this version".into(),
+                    activate: Box::new(|t: &mut Self| t.skip()),
+                    ..Default::default()
+                }
+                .into(),
+            );
+            items.push(MenuItem::Separator);
+        }
         items.push(
             StandardItem {
                 label: "Refresh".into(),
@@ -176,6 +214,13 @@ impl ksni::Tray for Hotch {
     }
 }
 
+/// The release page in the default browser. Hotch downloads nothing itself.
+fn open(url: &str) {
+    if let Ok(mut child) = std::process::Command::new("xdg-open").arg(url).spawn() {
+        std::thread::spawn(move || child.wait());
+    }
+}
+
 pub fn run() {
     let (tx, rx) = mpsc::channel();
     let tray = Hotch {
@@ -184,6 +229,7 @@ pub fn run() {
         system: System::default(),
         refresh: tx,
         settings: Settings::load(),
+        update: update::Status::default(),
     };
     let handle = match tray.spawn() {
         Ok(h) => h,
@@ -207,7 +253,10 @@ pub fn run() {
             h.system = sys;
             h.sessions = found;
         });
+        // At most daily, and only while enabled; quiet when offline.
+        let checking = std::thread::spawn(|| update::status(update::Check::IfDue));
         let fresh = usage::fetch_all();
+        let status = checking.join().unwrap_or_default();
         let updated = handle.update(|h| {
             let merged = fresh
                 .into_iter()
@@ -217,6 +266,7 @@ pub fn run() {
                 })
                 .collect();
             h.usages = merged;
+            h.update = status;
         });
         if updated.is_none() {
             return;

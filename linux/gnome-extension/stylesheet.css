@@ -98,6 +98,9 @@
 .hotch-footer-button { border-radius: 8px; padding: 4px; }
 .hotch-footer-button:hover { background-color: rgba(255, 255, 255, 0.08); }
 .hotch-footer-icon { icon-size: 14px; color: rgba(255, 255, 255, 0.66); }
+.hotch-update-row { padding: 0 4px; }
+.hotch-update-link { spacing: 6px; }
+.hotch-update-label { color: rgba(255, 255, 255, 0.84); font-weight: 600; }
 
 /* Floating pill (Mac: Floating pill home) */
 .hotch-pill {
@@ -165,3 +168,4 @@
 .hotch-light .hotch-divider, .hotch-light .hotch-pill-divider,
 .hotch-light .hotch-pill-sep { background-color: rgba(0, 0, 0, 0.12); }
 .hotch-light .hotch-pill-critical { color: #bc201b; }
+.hotch-light .hotch-update-label { color: #202024; }

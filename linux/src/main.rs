@@ -4,6 +4,7 @@ mod settings;
 mod system;
 #[cfg(target_os = "linux")]
 mod tray;
+mod update;
 mod usage;
 
 use serde_json::{Value, json};
@@ -13,12 +14,13 @@ hotch — AI plan usage, agent sessions and system load in the tray
 
 usage: hotch [command] [--json]
 
-  (none)     run the tray icon (Linux)
-  usage      Claude and Codex plan usage
-  sessions   live Claude Code and Codex sessions
-  system     CPU, memory, battery (Linux)
-  all        everything above
-  settings   show preferences; settings set KEY VALUE changes one
+  (none)        run the tray icon (Linux)
+  usage         Claude and Codex plan usage
+  sessions      live Claude Code and Codex sessions
+  system        CPU, memory, battery (Linux)
+  all           everything above, plus a daily check for a newer Linux release
+  settings      show preferences; settings set KEY VALUE changes one
+  update-check  ask GitHub for a newer Linux release now; never installs it
 ";
 
 fn main() {
@@ -31,11 +33,28 @@ fn main() {
         Some("usage") => print(json, json!({"usage": usage_json()}), usage_text),
         Some("sessions") => print(json, json!({"sessions": sessions_json()}), sessions_text),
         Some("system") => print(json, json!({"system": system_json()}), system_text),
-        Some("all") => print(
-            json,
-            json!({"usage": usage_json(), "sessions": sessions_json(), "system": system_json()}),
-            |v| [usage_text(v), sessions_text(v), system_text(v)].join("\n"),
-        ),
+        Some("all") => {
+            // The daily update check runs beside the provider reads, not after them.
+            let update = std::thread::spawn(|| update::status(update::Check::IfDue).to_json());
+            let usage = usage_json();
+            let value = json!({"usage": usage, "sessions": sessions_json(), "system": system_json(),
+                "update": update.join().unwrap_or(Value::Null)});
+            print(json, value, |v| {
+                [usage_text(v), sessions_text(v), system_text(v)].join("\n") + &update_text(v)
+            })
+        }
+        Some("update-check") => {
+            let status = update::status(update::Check::Now);
+            let answered = status.answered == Some(true);
+            print(
+                json,
+                json!({"update": status.to_json(), "answered": answered}),
+                update_check_text,
+            );
+            if !answered {
+                std::process::exit(1);
+            }
+        }
         Some("version") => println!("hotch {}", env!("CARGO_PKG_VERSION")),
         Some("settings") => {
             if let Err(e) = settings::command(&args[1..]) {
@@ -150,4 +169,37 @@ fn system_text(v: &Value) -> String {
         );
     }
     out + "\n"
+}
+
+/// The notice line `hotch all` adds while automatic checks are on.
+fn update_text(v: &Value) -> String {
+    let u = &v["update"];
+    if u["available"] != true || !settings::Settings::load().update_checks() {
+        return String::new();
+    }
+    format!(
+        "\nHotch {} is available: {}\n",
+        u["latest"].as_str().unwrap_or(""),
+        u["url"].as_str().unwrap_or("")
+    )
+}
+
+fn update_check_text(v: &Value) -> String {
+    let u = &v["update"];
+    let current = u["current"].as_str().unwrap_or("");
+    let latest = u["latest"].as_str().unwrap_or("");
+    let url = u["url"].as_str().unwrap_or("");
+    if update::deb_arch().is_none() {
+        "Update checks cover the amd64 and arm64 Linux packages only.\n".into()
+    } else if v["answered"] != true {
+        "Could not check for updates right now; try again later.\n".into()
+    } else if u["available"] == true {
+        format!(
+            "Hotch {latest} is available: {url}\nDownload the .deb for this machine there; Hotch never installs it.\n"
+        )
+    } else if update::is_newer(latest, current) {
+        format!("Hotch {latest} is available but skipped: {url}\nhotch settings set updateSkipped '' shows it again.\n")
+    } else {
+        format!("Hotch {current} is up to date.\n")
+    }
 }

@@ -16,7 +16,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import {mergeUsage, readingStatus} from './data.js';
+import {mergeUsage, readingStatus, updateNotice} from './data.js';
 import {HOMES, normalizeSettings, displayedPercent, focusReading, focusAction,
     clockText, privateClipboard, rememberClipboard, companionPosition} from './model.js';
 
@@ -228,8 +228,28 @@ class HotchIndicator extends PanelMenu.Button {
         this._footer.add_child(settings);
         this._footer.add_child(refresh);
 
+        // A quiet footer line while a newer Linux release is out. Hotch only
+        // links to it; downloading and installing stay with the user.
+        this._updateRow = hbox('hotch-update-row', {visible: false});
+        this._updateLabel = label('', 'hotch-footer-label hotch-update-label');
+        const updateLink = new St.Button({style_class: 'hotch-footer-button', can_focus: true});
+        const updateBox = hbox('hotch-update-link');
+        updateBox.add_child(themedIcon(['software-update-available-symbolic'], 'hotch-footer-icon'));
+        updateBox.add_child(this._updateLabel);
+        updateLink.set_child(updateBox);
+        updateLink.connect('clicked', () => this._openRelease(this._notice));
+        this._updateSkip = new St.Button({style_class: 'hotch-footer-button', can_focus: true});
+        this._updateSkip.set_child(label('Skip this version', 'hotch-footer-label'));
+        this._updateSkip.connect('clicked', () => {
+            if (this._notice) this._ext.updateSettings({updateSkipped: this._notice.version});
+        });
+        this._updateRow.add_child(updateLink);
+        this._updateRow.add_child(spacer());
+        this._updateRow.add_child(this._updateSkip);
+
         this._card.add_child(this._tabs);
         this._card.add_child(this._scroll);
+        this._card.add_child(this._updateRow);
         this._card.add_child(this._footer);
         this.menu.box.add_child(this._card);
         this.watchMenu(this.menu);
@@ -270,6 +290,7 @@ class HotchIndicator extends PanelMenu.Button {
     destroy() {
         this._cancellable.cancel();
         this._process?.force_exit();
+        this._updateProcess?.force_exit();
         if (this._timer)
             GLib.source_remove(this._timer);
         this._timer = null;
@@ -324,6 +345,47 @@ class HotchIndicator extends PanelMenu.Button {
         });
     }
 
+    /// Check now: the answer lands in the cache the next poll reads, so a
+    /// failed check (offline, rate-limited) changes nothing on screen.
+    _checkForUpdates() {
+        const bin = this._binary();
+        if (!bin || this._updateProcess)
+            return;
+        let proc;
+        try {
+            proc = Gio.Subprocess.new([bin, 'update-check', '--json'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
+        } catch (e) {
+            logError(e, 'hotch: could not check for updates');
+            return;
+        }
+        this._updateProcess = proc;
+        this._render();
+        proc.communicate_utf8_async(null, this._cancellable, (p, res) => {
+            this._updateProcess = null;
+            try {
+                p.communicate_utf8_finish(res);
+            } catch (e) {
+                if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                    logError(e, 'hotch: update check failed');
+            }
+            if (!this._cancellable.is_cancelled())
+                this._refresh();
+        });
+    }
+
+    _openRelease(release) {
+        if (!release)
+            return;
+        try {
+            Gio.AppInfo.launch_default_for_uri(release.url, global.create_app_launch_context(0, -1));
+        } catch (e) {
+            logError(e, 'hotch: could not open the release page');
+        }
+        this.menu.close();
+        this._ext.pill?.menu.close();
+    }
+
     _apply(fresh) {
         const previous = this._data?.usage ?? [];
         const enabled = this._ext.settings.providers;
@@ -335,6 +397,7 @@ class HotchIndicator extends PanelMenu.Button {
         // custom duration is being typed. Clock ticks update only the label.
         if (this._tab === 'focus') {
             this._renderPanel();
+            this._renderUpdate();
             this._ext.pill?.render(this._data);
             this._checkedLabel.text = 'Last check just now';
         } else {
@@ -354,6 +417,7 @@ class HotchIndicator extends PanelMenu.Button {
         const height = Math.max(160, Math.min(420, Main.layoutManager.primaryMonitor.height - Main.panel.height - 160));
         this._scroll.set_style(`max-height: ${height}px;`);
         this._renderPanel();
+        this._renderUpdate();
         this._ext.pill?.render(this._data);
         this._homeButton.set_child(label(this._ext.settings.home === 'panel' ? 'Float as pill' : 'Move to top bar',
             'hotch-footer-label hotch-home-label'));
@@ -403,6 +467,12 @@ class HotchIndicator extends PanelMenu.Button {
         this._panelAlert.text = `● ${needs}`;
         if (this._ext.settings.focus.startedAt !== null)
             this._panelLabel.text += ` · ${clockText(focusReading(this._ext.settings.focus, now()).seconds)}`;
+    }
+
+    _renderUpdate() {
+        this._notice = updateNotice(this._data?.update, this._ext.settings);
+        this._updateRow.visible = Boolean(this._notice);
+        this._updateLabel.text = this._notice ? `Hotch ${this._notice.version} is available` : '';
     }
 
     _remaining() { return this._ext.settings.displayMode === 'remaining'; }
@@ -658,8 +728,38 @@ class HotchIndicator extends PanelMenu.Button {
         this._page.add_child(this._action(s.clipboardEnabled ? 'Disable clipboard history' : 'Enable clipboard history',
             () => this._ext.updateSettings({clipboardEnabled: !s.clipboardEnabled})));
         this._page.add_child(this._paragraph('Optional text history: five entries in memory, cleared when disabled or Hotch stops. Password-manager privacy markers are skipped when supplied.'));
+        this._renderUpdateSettings();
         this._page.add_child(this._paragraph(`Hotch ${this._ext.metadata['version-name']} · Experimental Linux support. The GNOME extension starts at login while enabled. Other desktops use the tray and hotch settings CLI.`));
         this._page.add_child(this._paragraph('Notch, Dock integration, Backpack, additional providers and advanced hardware readings remain unavailable on Linux.'));
+    }
+
+    _renderUpdateSettings() {
+        const s = this._ext.settings;
+        const u = this._data?.update;
+        // The release a check found, shown here even with automatic checks off.
+        const release = updateNotice(u, {...s, updateChecks: true});
+        const skipped = Boolean(u?.latest) && u.latest === s.updateSkipped && u.latest !== u.current;
+        let status = 'Not checked yet';
+        if (this._updateProcess)
+            status = 'Checking GitHub…';
+        else if (release)
+            status = `Hotch ${release.version} is available`;
+        else if (skipped)
+            status = `Skipping Hotch ${u.latest}`;
+        else if (u?.checkedAt)
+            status = `Hotch ${u.current} is up to date · checked ${ago(now() - u.checkedAt)}`;
+        this._page.add_child(label('UPDATES', 'hotch-section'));
+        this._page.add_child(this._action(`${s.updateChecks ? '✓' : '○'} Check for updates daily`,
+            () => this._ext.updateSettings({updateChecks: !s.updateChecks}, true)));
+        this._page.add_child(this._paragraph(status));
+        const actions = hbox('hotch-choices');
+        actions.add_child(this._action('Check now', () => this._checkForUpdates()));
+        if (release)
+            actions.add_child(this._action('Open release page', () => this._openRelease(release)));
+        if (skipped)
+            actions.add_child(this._action('Show again', () => this._ext.updateSettings({updateSkipped: ''}, true)));
+        this._page.add_child(actions);
+        this._page.add_child(this._paragraph('Once a day Hotch asks GitHub which Linux release is newest, sending its version and nothing about you. It never downloads or installs an update.'));
     }
 
     _renderFocus() {
