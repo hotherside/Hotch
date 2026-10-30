@@ -22,7 +22,7 @@ System sampling follows visible demand. Ordinary cards keep their live readings 
 
 Clipboard history is in-memory, text-only, and optional. Preserve its size limit, lifetime, disable behavior, and concealed/transient marker checks when changing it.
 
-Updates come from Sparkle and its appcast, the app's only request that is not to a provider. Each update is an EdDSA-signed zip of the notarised app, checked against the public key in `Info.plist` and the Developer ID before it replaces the bundle in place, which keeps the Backpack helper's registration path. Hotch is not sandboxed, so Sparkle's XPC services are stripped from the bundle. Anonymous system profiling is off. `UpdatePolicy` keeps scheduled windows off the welcome and Focus runs and holds automatic installs for a quiet moment; an update relaunch hands a running Focus timer to the new version.
+Updates come from Sparkle and its appcast, the app's only request that is not to a provider. Each update is an EdDSA-signed zip of the notarised app, checked against the public key in `Info.plist` and the Developer ID before it replaces the bundle in place, which keeps the Backpack helper's registration path. Hotch is not sandboxed, so Sparkle's XPC services are stripped from the bundle. Anonymous system profiling is off. `UpdatePolicy` keeps scheduled windows off the welcome and Focus runs and holds automatic installs for a quiet moment; an update relaunch hands a running Focus timer to the new version. The `Appcast` workflow publishes `docs/appcast.xml`, alone, to GitHub Pages once every download it names exists.
 
 ## Checks
 

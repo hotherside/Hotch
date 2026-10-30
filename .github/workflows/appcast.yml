@@ -1,0 +1,65 @@
+name: Appcast
+
+# Publishes docs/appcast.xml, and nothing else, to GitHub Pages: the feed
+# every shipped Mac app checks for updates. It runs when a release's appcast
+# entry reaches main. Every download the feed names must already exist, so
+# an appcast merged before its release assets are uploaded is refused rather
+# than breaking every user's update.
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/appcast.xml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}appcast.xml
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check the appcast and its downloads
+        run: |
+          test -f docs/appcast.xml || { echo "docs/appcast.xml does not exist yet; see RELEASING.md"; exit 1; }
+          python3 - <<'EOF' > enclosures.txt
+          import xml.etree.ElementTree as ET
+          for enclosure in ET.parse("docs/appcast.xml").iter("enclosure"):
+              print(enclosure.get("url"))
+          EOF
+          test -s enclosures.txt || { echo "the appcast offers no downloads"; exit 1; }
+          while read -r url; do
+            curl -sfIL -o /dev/null "$url" || { echo "missing download: $url (upload it to the release first)"; exit 1; }
+            echo "ok  $url"
+          done < enclosures.txt
+
+      - name: Stage the appcast alone
+        run: |
+          mkdir site
+          cp docs/appcast.xml site/appcast.xml
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

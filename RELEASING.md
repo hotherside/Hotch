@@ -37,7 +37,7 @@ The Makefile contains additional packaging targets for maintainers (`make dmg`, 
 
 ## In-app updates (macOS)
 
-Hotch 2.4.0 and later update themselves with [Sparkle](https://sparkle-project.org). Each Mac release adds an entry to the appcast, a public list of versions at `FEED_URL` in the `Makefile` (`https://hotherside.com/hotch/appcast.xml`). Shipped apps ask that address forever, so it must never change. The committed copy is `docs/appcast.xml`. The update itself is `Hotch-X.Y.Z.zip`, a release asset beside the DMG.
+Hotch 2.4.0 and later update themselves with [Sparkle](https://sparkle-project.org). Each Mac release adds an entry to the appcast, a public list of versions at `FEED_URL` in the `Makefile` (`https://hotherside.com/hotch/appcast.xml`). Shipped apps ask that address forever, so it must never change. The committed copy is `docs/appcast.xml`; the `Appcast` workflow publishes that one file to GitHub Pages whenever it changes on `main`. The update itself is `Hotch-X.Y.Z.zip`, a release asset beside the DMG.
 
 ### The signing key
 
@@ -56,14 +56,23 @@ Store the file's contents in your password manager, then delete the file. To sig
 1. Write the release's `## X.Y.Z` section in `CHANGELOG.md` for Mac users: `make appcast` copies it verbatim into the update window as Markdown, and fails if it is missing.
 2. Run `make release NOTARY_PROFILE=<profile>`. After verification it zips the stapled app into `build/updates/` and runs `generate_appcast`, which signs the zip and writes the entry into `docs/appcast.xml`, pointing at `https://github.com/hotherside/Hotch/releases/download/vX.Y.Z/Hotch-X.Y.Z.zip`.
 3. Create the GitHub release with the tag `vX.Y.Z` (the appcast URL depends on it) and attach both `build/dist/Hotch-X.Y.Z.dmg` and `build/updates/Hotch-X.Y.Z.zip`. Publish it and check that the zip URL downloads.
-4. Only then publish the appcast: commit `docs/appcast.xml` and make that file live at the feed address. Publishing it before the zip exists makes every user's update fail.
-5. Check `curl -sL https://hotherside.com/hotch/appcast.xml | grep sparkle:version`, then use **Check for Updates…** on a Mac running the previous version.
+4. Only then publish the appcast: merge the commit that updates `docs/appcast.xml` into `main`. The `Appcast` workflow checks that every download the feed names exists, then deploys the file to GitHub Pages. It refuses an appcast whose zip is not uploaded yet, because that would make every user's update fail.
+5. Check `curl -sL <FEED_URL> | grep sparkle:version`, then use **Check for Updates…** on a Mac running the previous version.
 
 ### Releases with no macOS changes
 
 Versions stay in lockstep across macOS and Linux, so some releases change only Linux. Run `make release NOTARY_PROFILE=<profile> APPCAST=skip`: the DMG is built and notarised as usual so the download matches the version, but no appcast entry is added, and Mac users are not asked to install an identical app. Attach only the DMG and leave `docs/appcast.xml` alone. The next release with Mac changes is offered to everyone, whichever of the two they have.
 
 ### The first Sparkle release
+
+Hosting the feed has to work before 2.4.0 is built, because the address is compiled into every copy:
+
+- [ ] Set `FEED_URL` in the `Makefile` to the final address, and update the address in `SHARING.md`, `README.md` and this file to match.
+- [ ] In the repository's **Settings → Pages**, set the source to **GitHub Actions**.
+- [ ] In the GitHub account's **Settings → Pages**, add `hotherside.com` as a verified domain, and create the TXT record it asks for at GoDaddy. This stops anyone else claiming a `hotherside.com` subdomain on GitHub Pages if the site is ever switched off while its DNS record remains.
+- [ ] At GoDaddy, add a CNAME record `hotch` → `hotherside.github.io`, then enter `hotch.hotherside.com` as the custom domain in the repository's Pages settings (only if the feed is on that subdomain).
+- [ ] Once GitHub has issued the certificate, tick **Enforce HTTPS**. Before the first appcast exists, `curl -I https://hotch.hotherside.com/` should answer from GitHub with no certificate error.
+- [ ] After the 2.4.0 appcast is merged and the workflow has run, `curl -I <FEED_URL>` must return 200 with no certificate error. Fix it before announcing 2.4.0.
 
 Hotch 2.2.0 and 2.3.0 have no updater. The 2.4.0 release notes must tell those users to download 2.4.0 from the release page once; every later version arrives in the app.
 
