@@ -4,7 +4,9 @@ name: Appcast
 # every shipped Mac app checks for updates. It runs when a release's appcast
 # entry reaches main. Every download the feed names must already exist, so
 # an appcast merged before its release assets are uploaded is refused rather
-# than breaking every user's update.
+# than breaking every user's update. Pages serves it at hotch.hotherside.com,
+# the custom domain in the repository's Pages settings; a site deployed from
+# Actions takes its domain from there, so there is no CNAME file to stage.
 
 on:
   push:

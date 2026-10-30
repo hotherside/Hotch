@@ -34,9 +34,10 @@ SPARKLE_PUBLIC_KEY := 2p8fQKxFbnPLehPfbUtNhyyGIOnUIFu2ITeUoLFbz2M=
 # key in a local update test. Never the release key: that stays in Keychain.
 SPARKLE_KEY_FILE   ?=
 # Where every shipped copy asks for updates. Permanent once a release carries
-# it, so it names the maintainer's own domain and not a host that may move.
+# it, so it names the maintainer's own domain: a CNAME points it at GitHub
+# Pages today and can point elsewhere without the address changing.
 # `make app FEED_URL=` builds a copy that never checks.
-FEED_URL       ?= https://hotherside.com/hotch/appcast.xml
+FEED_URL       ?= https://hotch.hotherside.com/appcast.xml
 # The appcast as published, committed so each release's entry is reviewed.
 APPCAST_FILE   := docs/appcast.xml
 UPDATES_DIR    := $(BUILD_DIR)/updates

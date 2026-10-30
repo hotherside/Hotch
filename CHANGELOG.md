@@ -8,7 +8,7 @@ Notable user-facing changes are recorded here.
 - macOS: an update window never appears over the welcome or during a Focus run. A line in the card says an update is available and brings the window back.
 - macOS: Download and install updates automatically is an opt-in in Settings. It waits until the card is closed and no Focus timer or Backpack session is running, or until you quit.
 - macOS: a Focus timer running when an update installs carries on in the new version.
-- macOS: the update check sends only the Hotch and Sparkle versions to hotherside.com and can be turned off. Sparkle's anonymous system profile is off. Sparkle is Hotch's first third-party package.
+- macOS: the update check sends only the Hotch and Sparkle versions to hotch.hotherside.com and can be turned off. Sparkle's anonymous system profile is off. Sparkle is Hotch's first third-party package.
 - For the 2.4.0 release notes: Hotch 2.2.0 and 2.3.0 cannot update themselves. Download 2.4.0 from the release page once; later versions arrive in the app.
 
 ## 2.3.0

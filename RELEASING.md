@@ -37,7 +37,7 @@ The Makefile contains additional packaging targets for maintainers (`make dmg`, 
 
 ## In-app updates (macOS)
 
-Hotch 2.4.0 and later update themselves with [Sparkle](https://sparkle-project.org). Each Mac release adds an entry to the appcast, a public list of versions at `FEED_URL` in the `Makefile` (`https://hotherside.com/hotch/appcast.xml`). Shipped apps ask that address forever, so it must never change. The committed copy is `docs/appcast.xml`; the `Appcast` workflow publishes that one file to GitHub Pages whenever it changes on `main`. The update itself is `Hotch-X.Y.Z.zip`, a release asset beside the DMG.
+Hotch 2.4.0 and later update themselves with [Sparkle](https://sparkle-project.org). Each Mac release adds an entry to the appcast, a public list of versions at `FEED_URL` in the `Makefile` (`https://hotch.hotherside.com/appcast.xml`). Shipped apps ask that address forever, so it must never change. The committed copy is `docs/appcast.xml`; the `Appcast` workflow publishes that one file to GitHub Pages, which serves it at that address, whenever it changes on `main`. The update itself is `Hotch-X.Y.Z.zip`, a release asset beside the DMG.
 
 ### The signing key
 
@@ -65,14 +65,12 @@ Versions stay in lockstep across macOS and Linux, so some releases change only L
 
 ### The first Sparkle release
 
-Hosting the feed has to work before 2.4.0 is built, because the address is compiled into every copy:
+The feed's address is compiled into every copy, so its hosting has to work before 2.4.0 ships. `hotch.hotherside.com` is a CNAME at GoDaddy (the DNS host for `hotherside.com`) pointing at GitHub Pages, which serves whatever the `Appcast` workflow deploys. Set it up in this order; steps 1 to 3 can be done any time before 2.4.0 is built.
 
-- [ ] Set `FEED_URL` in the `Makefile` to the final address, and update the address in `SHARING.md`, `README.md` and this file to match.
-- [ ] In the repository's **Settings → Pages**, set the source to **GitHub Actions**.
-- [ ] In the GitHub account's **Settings → Pages**, add `hotherside.com` as a verified domain, and create the TXT record it asks for at GoDaddy. This stops anyone else claiming a `hotherside.com` subdomain on GitHub Pages if the site is ever switched off while its DNS record remains.
-- [ ] At GoDaddy, add a CNAME record `hotch` → `hotherside.github.io`, then enter `hotch.hotherside.com` as the custom domain in the repository's Pages settings (only if the feed is on that subdomain).
-- [ ] Once GitHub has issued the certificate, tick **Enforce HTTPS**. Before the first appcast exists, `curl -I https://hotch.hotherside.com/` should answer from GitHub with no certificate error.
-- [ ] After the 2.4.0 appcast is merged and the workflow has run, `curl -I <FEED_URL>` must return 200 with no certificate error. Fix it before announcing 2.4.0.
+1. [ ] **Verify `hotherside.com` for the `hotherside` account.** In the profile's **Settings → Pages** (the account's, not the repository's), choose **Add a domain** and enter `hotherside.com`. At GoDaddy, add the TXT record GitHub shows: host `_github-pages-challenge-hotherside`, with the value GitHub gives. Once `dig +short TXT _github-pages-challenge-hotherside.hotherside.com` returns it (DNS can take up to 24 hours), choose **Verify**. Keep the TXT record for good; the domain stays verified only while it exists. Verification stops anyone else putting a GitHub Pages site on a `hotherside.com` subdomain, for example if Pages is ever switched off here while the CNAME remains.
+2. [ ] **Point the subdomain at GitHub.** At GoDaddy, add a CNAME record with host `hotch` and value `hotherside.github.io` (no repository name). Never add a wildcard (`*`) record: GitHub warns that it allows a takeover even of a verified domain.
+3. [ ] **Turn on Pages for the repository.** In the repository's **Settings → Pages**, set **Source** to **GitHub Actions**, then enter `hotch.hotherside.com` as the custom domain and save. Do not add a `CNAME` file: a site deployed by Actions takes its domain from this setting and ignores one. Once the DNS check passes and GitHub has issued the certificate (up to 24 hours), tick **Enforce HTTPS**. `curl -I https://hotch.hotherside.com/` should then answer from GitHub (a 404 until the first appcast is deployed) with no certificate error.
+4. [ ] **Check the feed.** After the 2.4.0 appcast is merged into `main` and the `Appcast` workflow has run, `curl -I https://hotch.hotherside.com/appcast.xml` must return 200 with no certificate error. Fix it before announcing 2.4.0.
 
 Hotch 2.2.0 and 2.3.0 have no updater. The 2.4.0 release notes must tell those users to download 2.4.0 from the release page once; every later version arrives in the app.
 
