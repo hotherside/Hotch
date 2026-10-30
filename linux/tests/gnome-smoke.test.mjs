@@ -65,7 +65,7 @@ function shell() {
     const layout = Object.assign(new Signals(), {primaryMonitor: {x: 0, y: 0, width: 1280, height: 720},
         addChrome(actor) { actor.chrome = true; }, removeChrome(actor) { actor.chrome = false; }});
     layout.monitors = [layout.primaryMonitor];
-    const notifications = [];
+    const notifications = [], launched = [], processes = [];
     const context = {
         ...model, ...data, TextDecoder, TextEncoder,
         Date: {now: () => time * 1000},
@@ -87,21 +87,26 @@ function shell() {
             Cancellable: class { cancel() { this.cancelled = true; } is_cancelled() { return !!this.cancelled; } },
             File: {new_for_path: () => file}, FileMonitorFlags: {}, FileCreateFlags: {}, FileQueryInfoFlags: {},
             ThemedIcon: {new_from_names: () => ({})}, FileIcon: {new: () => ({})},
-            SubprocessFlags: {}, Subprocess: {new: () => ({force_exit() {},
-                communicate_utf8_async(_a, _b, callback) { this.callback = callback; },
-                communicate_utf8_finish() { return [true, JSON.stringify(fixture)]; }})}},
+            AppInfo: {launch_default_for_uri: uri => launched.push(uri)},
+            SubprocessFlags: {}, Subprocess: {new: argv => {
+                const proc = {argv, force_exit() { this.exited = true; },
+                    communicate_utf8_async(_a, _b, callback) { this.callback = callback; },
+                    communicate_utf8_finish() { return [true, JSON.stringify(fixture)]; }};
+                processes.push(proc);
+                return proc;
+            }}},
         Main: {layoutManager: layout, panel: {height: 30, addToStatusArea() {}}, uiGroup: new Actor(),
             notify: (...args) => notifications.push(args)},
         PanelMenu: {Button: Panel}, PopupMenu: {PopupMenu: Menu, PopupMenuManager: class { addMenu() {} }},
         Extension: class { constructor() { this.metadata = {'version-name': 'test'}; this.dir = file; } },
-        global: {display: {get_selection: () => selection}},
+        global: {display: {get_selection: () => selection}, create_app_launch_context: () => null},
         logError(e) { throw e; },
     };
     const source = readFileSync(new URL('../gnome-extension/extension.js', import.meta.url), 'utf8')
         .replace(/^import[\s\S]*?;\n/gm, '').replace('export default class HotchExtension', 'class HotchExtension');
     vm.runInNewContext(`${source}\nthis.HotchExtension = HotchExtension;`, context);
     const extension = new context.HotchExtension();
-    return {extension, timers, selection, clipboard, clipboardCallbacks, notifications,
+    return {extension, timers, selection, clipboard, clipboardCallbacks, notifications, launched, processes,
         advance: seconds => { time += seconds; }};
 }
 
@@ -169,5 +174,50 @@ test('background provider refresh preserves Focus input widgets', () => {
     e._indicator._apply({usage: [], sessions: [], system: {}});
     assert.deepEqual(e._indicator._page.children, widgets);
     assert.ok(widgets.every(widget => !widget.dead));
+    e.disable();
+});
+
+const texts = actor => [actor.text, actor.label, ...actor.children.flatMap(texts)].filter(t => typeof t === 'string');
+
+test('update notice opens the release page, skips a version and stays off when disabled', () => {
+    const {extension: e, launched, processes} = shell();
+    e.enable();
+    const indicator = e._indicator;
+    const release = {current: '2.3.0', latest: '2.4.0', checkedAt: 1000, available: true,
+        url: 'https://github.com/hotherside/Hotch/releases/tag/v2.4.0'};
+    const poll = update => indicator._apply({usage: [], sessions: [], system: {}, update});
+    const [startup] = processes;
+    startup.callback(startup, null);
+    assert.equal(indicator._updateRow.visible, false);
+    poll(release);
+    assert.equal(indicator._updateRow.visible, true);
+    assert.equal(indicator._updateLabel.text, 'Hotch 2.4.0 is available');
+
+    indicator.menu.open();
+    indicator._updateRow.children[0].emit('clicked');
+    assert.deepEqual(launched, [release.url]);
+    assert.equal(indicator.menu.opened, false);
+
+    indicator._updateSkip.emit('clicked');
+    assert.equal(e.settings.updateSkipped, '2.4.0');
+    assert.equal(indicator._updateRow.visible, false);
+    poll({...release, latest: '2.5.0', url: 'https://github.com/hotherside/Hotch/releases/tag/v2.5.0'});
+    assert.equal(indicator._updateLabel.text, 'Hotch 2.5.0 is available');
+
+    // Off: no footer line, but Settings still shows what a check found.
+    e.updateSettings({updateChecks: false});
+    assert.equal(indicator._updateRow.visible, false);
+    indicator._show('settings');
+    assert.ok(texts(indicator._page).includes('Hotch 2.5.0 is available'));
+    assert.ok(texts(indicator._page).includes('○ Check for updates daily'));
+
+    const checkNow = indicator._page.children.flatMap(c => [c, ...c.children]).find(c => c.label === 'Check now');
+    checkNow.emit('clicked');
+    const check = processes.at(-1);
+    assert.equal(check.argv.join(' '), '/fixture/hotch-bin update-check --json');
+    assert.ok(texts(indicator._page).includes('Checking GitHub…'));
+    check.callback(check, null);
+    assert.equal(indicator._updateProcess, null);
+    assert.equal(processes.at(-1).argv.join(' '), '/fixture/hotch-bin all --json');
     e.disable();
 });

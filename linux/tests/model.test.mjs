@@ -13,6 +13,17 @@ test('invalid stored preferences fall back safely while existing pill position s
     assert.equal(normalizeSettings(null).focus.startedAt, null);
     assert.deepEqual(normalizeSettings({providers: []}).providers, []);
     assert.equal(displayedPercent(30, 'remaining'), 70);
+    assert.equal(result.updateChecks, true);
+    assert.equal(result.updateSkipped, '');
+});
+
+test('update preferences keep only a boolean switch and a release version to skip', () => {
+    assert.equal(normalizeSettings({updateChecks: false}).updateChecks, false);
+    assert.equal(normalizeSettings({updateChecks: 'off'}).updateChecks, true);
+    assert.equal(normalizeSettings({updateSkipped: '2.4.0'}).updateSkipped, '2.4.0');
+    assert.equal(normalizeSettings({updateSkipped: '2.5.0-beta.1'}).updateSkipped, '2.5.0-beta.1');
+    for (const bad of ['latest', '2.4', '2.4.0+build', 7, null])
+        assert.equal(normalizeSettings({updateSkipped: bad}).updateSkipped, '');
 });
 
 test('Focus pause, resume, restart and completion retain elapsed time', () => {

@@ -2,7 +2,7 @@ name: Linux checks
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
     paths: ["linux/**", ".github/workflows/linux.yml", ".github/workflows/release-linux.yml", "Makefile", "Sources/Hotch/About.swift"]
   pull_request:
     paths: ["linux/**", ".github/workflows/linux.yml", ".github/workflows/release-linux.yml", "Makefile", "Sources/Hotch/About.swift"]
