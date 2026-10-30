@@ -11,15 +11,16 @@ body:
     id: version
     attributes:
       label: Hotch version
-      description: Find this in Settings → About.
+      description: On macOS, find this in Settings → About. On Linux, run `hotch version`.
       placeholder: 2.3.0
     validations:
       required: true
   - type: input
     id: macos
     attributes:
-      label: macOS version and Mac model
-      placeholder: macOS 15.x, MacBook Pro (Apple Silicon)
+      label: Operating system and machine
+      description: For Linux, include the distribution, desktop and GNOME Shell version if you use it.
+      placeholder: macOS 15.x, MacBook Pro (Apple Silicon) or Ubuntu 25.10, GNOME 49, amd64
     validations:
       required: true
   - type: dropdown
