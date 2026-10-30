@@ -4,5 +4,5 @@
   "description": "AI plan usage, live Claude Code and Codex sessions, and system load in the top bar. Needs the hotch binary from the Hotch repository's linux folder.",
   "shell-version": ["48", "49", "50"],
   "url": "https://github.com/hotherside/Hotch/tree/main/linux",
-  "version-name": "2.2.0"
+  "version-name": "2.3.0"
 }

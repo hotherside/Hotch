@@ -44,11 +44,11 @@ Native view snapshots with demo data, one per section, ending on an alert.
 
 ## Install
 
-Download `Hotch-2.2.0.dmg` from the [latest release](https://github.com/hotherside/Hotch/releases/latest), open it and drag **Hotch** into **Applications**. Then open Hotch from your Applications folder. It runs on macOS 14 Sonoma or later, on Apple silicon and Intel Macs.
+Download `Hotch-2.3.0.dmg` from the [latest release](https://github.com/hotherside/Hotch/releases/latest), open it and drag **Hotch** into **Applications**. Then open Hotch from your Applications folder. It runs on macOS 14 Sonoma or later, on Apple silicon and Intel Macs.
 
 Hotch is signed with a Developer ID and notarised by Apple, so it opens like any other app. A short welcome helps you choose where it lives, then points to it.
 
-To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.2.0.dmg` with the SHA-256 shown next to the file on the release page.
+To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.3.0.dmg` with the SHA-256 shown next to the file on the release page.
 
 Prefer to build it yourself? See [Build from source](#build-from-source).
 

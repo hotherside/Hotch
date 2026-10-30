@@ -12,7 +12,7 @@ body:
     attributes:
       label: Hotch version
       description: Find this in Settings → About.
-      placeholder: 2.2.0
+      placeholder: 2.3.0
     validations:
       required: true
   - type: input

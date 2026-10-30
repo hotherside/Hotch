@@ -1,6 +1,6 @@
 APP_NAME    := Hotch
 BUNDLE_ID   := com.hojaejung.hotch
-VERSION     := 2.2.0
+VERSION     := 2.3.0
 AUTHOR      := Hojae Jung
 EMAIL       := hello@hotherside.com
 BUILD_DIR   := build

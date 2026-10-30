@@ -25,7 +25,7 @@ enum HotchAbout {
     /// Fallback for running the executable directly out of `.build/release`,
     /// which has no Info.plist to read. Still a second copy, so `make
     /// check-version` fails the build when it disagrees with `VERSION`.
-    static let developmentVersion = "2.2.0"
+    static let developmentVersion = "2.3.0"
 
     /// "Built by Hojae Jung (hello@hotherside.com)"
     static var credit: String { "Built by \(author) (\(email))" }
