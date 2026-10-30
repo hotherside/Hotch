@@ -226,6 +226,7 @@ struct PanelPagesView: View {
     @ObservedObject var actions: PanelActions
     @ObservedObject var system: SystemMonitor
     @ObservedObject var backpack: BackpackManager
+    @ObservedObject private var updates = AppUpdater.shared
     let now: Date
     var history: UsageHistoryStore = .shared
     /// False only in the snapshot modes: `ImageRenderer` cannot lay out a
@@ -358,11 +359,15 @@ struct PanelPagesView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Text(footerText)
-                .font(.system(size: 11))
-                .foregroundStyle(HP.text3)
-                .lineLimit(1)
-                .contentTransition(.identity)
+            if let offer = updates.offer, model.revealHint == nil, !model.backpackCard {
+                UpdateFooterLine(offer: offer) { updates.checkForUpdates() }
+            } else {
+                Text(footerText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(HP.text3)
+                    .lineLimit(1)
+                    .contentTransition(.identity)
+            }
             Spacer(minLength: 8)
             BackpackShortcut(backpack: backpack, selected: model.backpackCard,
                              action: actions.toggleBackpackCard)

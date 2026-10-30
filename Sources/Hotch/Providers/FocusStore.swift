@@ -212,7 +212,8 @@ struct FocusMemory: Sendable, Equatable {
 
 /// A timer or stopwatch with a durable daily log. Runs bank active time across
 /// pauses and manual resumes. Relaunching restores interrupted work as finished
-/// entries so no clock starts without an explicit action.
+/// entries so no clock starts without an explicit action. The one exception is
+/// the relaunch an update performs, which carries the running timer across.
 @MainActor
 final class FocusStore: ObservableObject {
     /// Lengths offered as one-tap pills, in minutes.
@@ -254,6 +255,12 @@ final class FocusStore: ObservableObject {
     /// this cadence only covers the stretch where nothing is happening except
     /// time passing.
     static let liveWriteCadence: TimeInterval = 12
+    /// How long a run handed over for an update relaunch stays claimable.
+    ///
+    /// Sparkle relaunches within seconds of quitting. A copy that comes back
+    /// later than this was not relaunched by the update, so the run is treated
+    /// like any other interrupted one: a finished line, resumable by hand.
+    static let relaunchHandoffWindow: TimeInterval = 120
 
     private static let fileName = "focus-log"
 
@@ -313,9 +320,9 @@ final class FocusStore: ObservableObject {
     /// without the event writes being late.
     private var lastWrite: Date = .distantPast
 
-    init(persists: Bool = true, file: JSONFile? = nil) {
+    init(persists: Bool = true, file: JSONFile? = nil, now: Date = Date()) {
         self.file = file ?? (persists ? .credentialStore(name: FocusStore.fileName) : .memory)
-        load()
+        load(now: now)
     }
 
     // MARK: Reading the clock
@@ -484,6 +491,25 @@ final class FocusStore: ObservableObject {
         finish(run, duration: done)
     }
 
+    /// Writes the running timer down for the copy an update is about to
+    /// relaunch, instead of finishing it.
+    ///
+    /// An update is the app's doing, not the user's, so the run they started
+    /// keeps going: the next launch picks it up with its time, its pause and its
+    /// target intact, and the seconds spent installing count, as they would
+    /// have on a wall clock. Only `updaterWillRelaunchApplication` leads here;
+    /// an ordinary quit still finishes the line.
+    func handOffForRelaunch(now: Date = Date()) {
+        guard case let .running(run) = state else { return }
+        refreshLive(run, now: now)
+        write(now: now, handoff: [
+            "id": run.entryID.uuidString,
+            "at": now.timeIntervalSince1970,
+            "banked": served(run, now: now),
+            "paused": run.segmentStart == nil,
+        ])
+    }
+
     /// Called from the shared UI tick. Keeps the live line's duration current,
     /// and closes a run that reached its length — in full, with no chime and no
     /// prompt, just the readout going quiet. An open-ended one only closes
@@ -619,7 +645,7 @@ final class FocusStore: ObservableObject {
     /// dropped on load rather than accumulated; the task memory is not, because
     /// remembering that "FRNSW DEV" is 30 minutes is the opposite of a day's
     /// worth of rows.
-    private func write(now: Date, onlyIfDue: Bool = false) {
+    private func write(now: Date, onlyIfDue: Bool = false, handoff: [String: Any]? = nil) {
         if onlyIfDue, now.timeIntervalSince(lastWrite) < FocusStore.liveWriteCadence { return }
         lastWrite = now
         let entries: [[String: Any]] = todayEntries.map {
@@ -633,7 +659,11 @@ final class FocusStore: ObservableObject {
             if $0.isRunning { item["running"] = true }
             return item
         }
-        file.write(["entries": entries, "memory": encodedMemory()])
+        var root: [String: Any] = ["entries": entries, "memory": encodedMemory()]
+        // One-shot: every later write leaves it out, so a hand-off is honoured
+        // by the launch right after it and by nothing afterwards.
+        if let handoff { root["relaunch"] = handoff }
+        file.write(root)
     }
 
     private func encodedMemory() -> [String: Any] {
@@ -649,7 +679,7 @@ final class FocusStore: ObservableObject {
         return payload
     }
 
-    private func load() {
+    private func load(now: Date) {
         guard let root = file.read() else { return }
         loadMemory(root["memory"])
         // `stints` is the key this file used before the rename. Reading both
@@ -679,6 +709,27 @@ final class FocusStore: ObservableObject {
                               title: title, length: JSONWalk.double(item["length"]),
                               isRunning: false)
         }
+        resumeHandoff(root["relaunch"], now: now)
+    }
+
+    /// The one exception to "nothing resumes on launch": a run this app wrote
+    /// down for its own update relaunch moments ago. See `handOffForRelaunch`.
+    private func resumeHandoff(_ raw: Any?, now: Date) {
+        guard let handoff = raw as? [String: Any],
+              let id = JSONWalk.string(handoff["id"]).flatMap(UUID.init(uuidString:)),
+              let at = JSONWalk.double(handoff["at"]).map(Date.init(timeIntervalSince1970:)),
+              let banked = JSONWalk.double(handoff["banked"]),
+              case let gap = now.timeIntervalSince(at),
+              gap >= 0, gap <= FocusStore.relaunchHandoffWindow,
+              let index = todayEntries.firstIndex(where: { $0.id == id }) else { return }
+        let entry = todayEntries[index]
+        let paused = handoff["paused"] as? Bool ?? false
+        // The segment reopens at the moment of the hand-off, so the install
+        // counts. A countdown that ran out meanwhile closes on the next tick.
+        let run = Run(entryID: id, startedAt: entry.startedAt, length: entry.length,
+                      title: entry.title, banked: banked, segmentStart: paused ? nil : at)
+        state = .running(run)
+        todayEntries[index] = liveEntry(run, now: now)
     }
 
     private func loadMemory(_ raw: Any?) {

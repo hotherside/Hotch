@@ -120,3 +120,56 @@ struct HotchMoreSettings: View {
             .padding(.top, 6)
     }
 }
+
+/// Software updates: the two Sparkle switches and a manual check. Ask first is
+/// the default; automatic installs wait for a quiet moment (see `UpdatePolicy`).
+struct UpdateSettings: View {
+    @ObservedObject private var updates = AppUpdater.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("App updates")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .padding(.bottom, 6)
+            Toggle("Check for updates automatically", isOn: Binding(
+                get: { updates.checksAutomatically },
+                set: { updates.setChecksAutomatically($0) }))
+                .disabled(!updates.isRunning)
+            Toggle("Download and install updates automatically", isOn: Binding(
+                get: { updates.installsAutomatically },
+                set: { updates.setInstallsAutomatically($0) }))
+                .disabled(!updates.checksAutomatically)
+                .padding(.top, 4)
+                .disabled(!updates.isRunning)
+            HStack(spacing: 10) {
+                Button("Check for Updates\u{2026}") { updates.checkForUpdates() }
+                    .controlSize(.small)
+                    .disabled(!updates.canCheck)
+                if let checked = Fmt.ago(updates.lastChecked) {
+                    Text("Last checked \(checked)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 8)
+            Text(note)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+        }
+        .font(.system(size: 12))
+        .toggleStyle(.checkbox)
+    }
+
+    private var note: String {
+        guard updates.isRunning else {
+            return "This copy was built without an update feed, so it does not check for updates."
+        }
+        let host = (Bundle.main.infoDictionary?["SUFeedURL"] as? String)
+            .flatMap(URL.init(string:))?.host ?? "the update feed"
+        return "Once a day Hotch asks \(host) whether a newer version exists. The request names only the Hotch and Sparkle versions: no usage, settings or system profile. Updates are signed and show their release notes before you choose Install. Automatic installs wait until the card is closed and no Focus timer or Backpack session is running."
+    }
+}

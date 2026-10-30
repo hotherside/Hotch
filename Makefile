@@ -19,6 +19,32 @@ HELPER_PLIST   := Support/com.hojaejung.hotch.backpack.plist
 HELPER_BIN     := .build/release/$(HELPER_NAME)
 HELPER_BIN_X86 := .build-x86/release/$(HELPER_NAME)
 DIST_DIR    := $(BUILD_DIR)/dist
+# Sparkle, for in-app updates. SwiftPM fetches it and copies the framework
+# beside the executable; the tools (generate_appcast, generate_keys) come in
+# the same download.
+SPARKLE_FW     := .build/release/Sparkle.framework
+SPARKLE_BIN    := .build/artifacts/sparkle/Sparkle/bin
+APP_SPARKLE    := $(APP_BUNDLE)/Contents/Frameworks/Sparkle.framework
+# The update-signing key. The private half lives only in the maintainer's
+# login keychain under this account (see RELEASING.md); the public half is
+# compiled into every build and is what Sparkle checks downloads against.
+SPARKLE_ACCOUNT    := hotch
+SPARKLE_PUBLIC_KEY := 2p8fQKxFbnPLehPfbUtNhyyGIOnUIFu2ITeUoLFbz2M=
+# A private key file to sign with instead of the keychain, for a throwaway
+# key in a local update test. Never the release key: that stays in Keychain.
+SPARKLE_KEY_FILE   ?=
+# Where every shipped copy asks for updates. Permanent once a release carries
+# it, so it names the maintainer's own domain and not a host that may move.
+# `make app FEED_URL=` builds a copy that never checks.
+FEED_URL       ?= https://hotherside.com/hotch/appcast.xml
+# The appcast as published, committed so each release's entry is reviewed.
+APPCAST_FILE   := docs/appcast.xml
+UPDATES_DIR    := $(BUILD_DIR)/updates
+UPDATE_ZIP     := $(UPDATES_DIR)/$(APP_NAME)-$(VERSION).zip
+APPCAST_STAGE  := $(BUILD_DIR)/appcast-stage
+RELEASE_URL    := https://github.com/hotherside/Hotch/releases/download/v$(VERSION)/
+# Where `make appcast` finds this version's release notes.
+CHANGELOG      := CHANGELOG.md
 ZIP         := $(DIST_DIR)/$(APP_NAME)-$(VERSION).zip
 DMG         := $(DIST_DIR)/$(APP_NAME)-$(VERSION).dmg
 # Read-write scratch image. The Finder layout lives in the volume's .DS_Store,
@@ -60,6 +86,9 @@ SIGN_ID     ?= $(if $(DETECTED_ID),$(DETECTED_ID),-)
 # Team ID lives in parentheses at the end of the identity name.
 TEAM_ID     := $(shell echo '$(SIGN_ID)' | sed -nE 's/.*\(([A-Z0-9]+)\)$$/\1/p')
 NOTARY_PROFILE ?=
+# Every codesign call shares this: hardened runtime and a secure timestamp
+# with a Developer ID, neither of which means anything to an ad-hoc signature.
+CODESIGN    = codesign --force $(if $(filter -,$(SIGN_ID)),-s -,--options runtime --timestamp -s "$(SIGN_ID)")
 
 # Reports how big an artifact actually is.
 #
@@ -122,7 +151,8 @@ signing-status:
 	@printf 'notarytool: '; xcrun --find notarytool 2>/dev/null || echo "MISSING"
 
 .PHONY: all build build-x86 app app-universal run install dist dmg dmg-only \
-        notarize notarize-app release verify-release clean helper-selftest
+        notarize notarize-app release verify-release clean helper-selftest \
+        update-zip appcast
 
 all: app
 
@@ -150,6 +180,7 @@ bundle:
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	mkdir -p "$(APP_BUNDLE)/Contents/Resources"
 	mkdir -p "$(APP_BUNDLE)/Contents/Library/LaunchDaemons"
+	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
 	@if [ "$(LIPO)" = "1" ]; then \
 	  lipo -create "$(BIN)" "$(BIN_X86)" -output "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"; \
 	  echo "universal: $$(lipo -archs "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)")"; \
@@ -159,6 +190,19 @@ bundle:
 	  cp "$(EXEC_SRC)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"; \
 	  cp "$(HELPER_SRC)" "$(APP_BUNDLE)/Contents/MacOS/$(HELPER_NAME)"; \
 	fi
+	# Sparkle ships universal, so either build's copy serves both slices.
+	# ditto, not cp, because a framework is held together by symlinks. The
+	# executable finds it through the rpath set in Package.swift.
+	ditto "$(SPARKLE_FW)" "$(APP_SPARKLE)"
+	# Its XPC services exist for sandboxed apps, and Hotch is not one; the
+	# headers and module map are for compiling against it. None of it runs.
+	rm -rf "$(APP_SPARKLE)/XPCServices" "$(APP_SPARKLE)/Versions/B/XPCServices" \
+	  "$(APP_SPARKLE)/Headers" "$(APP_SPARKLE)/Versions/B/Headers" \
+	  "$(APP_SPARKLE)/PrivateHeaders" "$(APP_SPARKLE)/Versions/B/PrivateHeaders" \
+	  "$(APP_SPARKLE)/Modules" "$(APP_SPARKLE)/Versions/B/Modules"
+	# Sparkle's licence asks for its notice to travel with every copy, and the
+	# framework carries none of its own.
+	cp THIRD_PARTY_NOTICES.md "$(APP_BUNDLE)/Contents/Resources/"
 	# SMAppService.daemon(plistName:) looks for the plist here.
 	plutil -lint -s "$(HELPER_PLIST)"
 	cp "$(HELPER_PLIST)" "$(APP_BUNDLE)/Contents/Library/LaunchDaemons/"
@@ -193,22 +237,34 @@ bundle:
 	  '	<true/>' \
 	  '	<key>LSMinimumSystemVersion</key>' \
 	  '	<string>14.0</string>' \
+	  '	<key>SUFeedURL</key>' \
+	  '	<string>$(FEED_URL)</string>' \
+	  '	<key>SUPublicEDKey</key>' \
+	  '	<string>$(SPARKLE_PUBLIC_KEY)</string>' \
+	  '	<key>SUEnableAutomaticChecks</key>' \
+	  '	<true/>' \
+	  '	<key>SUScheduledCheckInterval</key>' \
+	  '	<integer>86400</integer>' \
+	  '	<key>SUAutomaticallyUpdate</key>' \
+	  '	<false/>' \
+	  '	<key>SUEnableSystemProfiling</key>' \
+	  '	<false/>' \
 	  '</dict>' \
 	  '</plist>' > "$(APP_BUNDLE)/Contents/Info.plist"
-	# Helper first: the app's signature seals nested code, so anything inside
-	# Contents/MacOS has to be signed before the bundle is. --identifier is what
-	# the app's code-signing requirement on the helper checks.
-	@if [ "$(SIGN_ID)" = "-" ]; then \
-	  codesign --force -s - --identifier "$(HELPER_ID)" \
-	    "$(APP_BUNDLE)/Contents/MacOS/$(HELPER_NAME)"; \
-	  codesign --force -s - "$(APP_BUNDLE)"; \
-	else \
-	  echo "signing with: $(SIGN_ID)"; \
-	  codesign --force --options runtime --timestamp --identifier "$(HELPER_ID)" \
-	    -s "$(SIGN_ID)" "$(APP_BUNDLE)/Contents/MacOS/$(HELPER_NAME)"; \
-	  codesign --force --options runtime --timestamp \
-	    -s "$(SIGN_ID)" "$(APP_BUNDLE)"; \
-	fi
+	# Inside out: the app's signature seals nested code, so everything nested
+	# has to be signed before the bundle is, innermost first. Sparkle's own
+	# order, from its documentation: the installer tool, the progress app,
+	# then the framework that holds them. No --deep, which would sign them all
+	# alike and lose the helper's identifier. Re-signing also drops the
+	# entitlement Sparkle's ad-hoc Autoupdate carries, as its docs intend.
+	@echo "signing with: $(SIGN_ID)"
+	$(CODESIGN) "$(APP_SPARKLE)/Versions/B/Autoupdate"
+	$(CODESIGN) "$(APP_SPARKLE)/Versions/B/Updater.app"
+	$(CODESIGN) "$(APP_SPARKLE)"
+	# --identifier is what the app's code-signing requirement on the helper
+	# checks.
+	$(CODESIGN) --identifier "$(HELPER_ID)" "$(APP_BUNDLE)/Contents/MacOS/$(HELPER_NAME)"
+	$(CODESIGN) "$(APP_BUNDLE)"
 	@echo "Built $(APP_BUNDLE)"
 
 run: app
@@ -523,9 +579,72 @@ notarize-app:
 	xcrun stapler validate "$(APP_BUNDLE)"
 	@echo "ticket stapled into $(APP_BUNDLE)"
 
+# The archive Sparkle downloads: the notarised, stapled app, zipped. It ships
+# as a release asset beside the disk image, which stays the download for new
+# installs. Not notarised again on its own: the ticket travels inside the app.
+#
+# ditto rather than zip, for the same reason as `dist`: the framework is held
+# together by symlinks that zip would turn into copies.
+update-zip:
+	@if [ ! -d "$(APP_BUNDLE)" ]; then \
+	  echo "error: $(APP_BUNDLE) does not exist — run 'make release' first"; exit 1; \
+	fi
+	@xcrun stapler validate "$(APP_BUNDLE)" > /dev/null || { \
+	  echo "error: $(APP_BUNDLE) carries no notarisation ticket; an update must"; \
+	  echo "  open offline exactly as a fresh download does — run 'make release'"; exit 1; }
+	mkdir -p "$(UPDATES_DIR)"
+	rm -f "$(UPDATE_ZIP)"
+	ditto -c -k --sequesterRsrc --keepParent "$(APP_BUNDLE)" "$(UPDATE_ZIP)"
+	@echo
+	@echo "  $(UPDATE_ZIP)"
+	@$(MAKE) --no-print-directory report-size FILE="$(UPDATE_ZIP)" EXTRA="Sparkle update"
+
+# Adds this version to the appcast: signs the update zip with the key in the
+# login keychain and writes the entry, release notes and all, into $(APPCAST_FILE).
+# Publishing is a separate, deliberate step; see RELEASING.md.
+#
+# Run in a fresh folder holding only this version's zip, its notes and the
+# current appcast, because generate_appcast rewrites the entry for every
+# archive it finds: an older zip left lying around would get this release's
+# download address. --maximum-deltas 0 for the same reason — a delta would be
+# one more asset to upload, for an app this size not worth it.
+#
+# The notes are this version's section of CHANGELOG.md, shown as Markdown in
+# Sparkle's window. A release with no macOS changes skips this target
+# entirely: `make release APPCAST=skip`.
+appcast:
+	@if [ ! -f "$(UPDATE_ZIP)" ]; then \
+	  echo "error: $(UPDATE_ZIP) does not exist — run 'make release' first"; exit 1; \
+	fi
+	rm -rf "$(APPCAST_STAGE)"
+	mkdir -p "$(APPCAST_STAGE)"
+	cp "$(UPDATE_ZIP)" "$(APPCAST_STAGE)/"
+	@awk -v want="## $(VERSION)" \
+	  '$$0 == want { on = 1; next } on && /^## / { exit } on { print }' "$(CHANGELOG)" \
+	  | sed -e '/./,$$!d' > "$(APPCAST_STAGE)/$(APP_NAME)-$(VERSION).md"
+	@if [ ! -s "$(APPCAST_STAGE)/$(APP_NAME)-$(VERSION).md" ]; then \
+	  echo "error: $(CHANGELOG) has no '## $(VERSION)' section for the release notes"; exit 1; \
+	fi
+	@if [ -f "$(APPCAST_FILE)" ]; then cp "$(APPCAST_FILE)" "$(APPCAST_STAGE)/appcast.xml"; fi
+	"$(SPARKLE_BIN)/generate_appcast" \
+	  $(if $(SPARKLE_KEY_FILE),--ed-key-file "$(SPARKLE_KEY_FILE)",--account "$(SPARKLE_ACCOUNT)") \
+	  --download-url-prefix "$(RELEASE_URL)" \
+	  --link "https://github.com/hotherside/Hotch/releases/latest" \
+	  --embed-release-notes \
+	  --maximum-deltas 0 \
+	  "$(APPCAST_STAGE)"
+	mkdir -p "$(dir $(APPCAST_FILE))"
+	cp "$(APPCAST_STAGE)/appcast.xml" "$(APPCAST_FILE)"
+	@echo
+	@echo "  $(APPCAST_FILE) now offers $(VERSION) from $(RELEASE_URL)"
+	@echo "  Upload $(UPDATE_ZIP) to the release before publishing the appcast."
+
 # The whole shipping path, in the one order that produces a clean install:
 # build universal, notarize and staple the app, seal the stapled app into the
-# image, then notarize and staple the image too.
+# image, then notarize and staple the image too. The stapled app is zipped for
+# Sparkle on the way, and last of all the appcast gains its entry — unless
+# APPCAST=skip says this release changes nothing on the Mac, so Mac users are
+# not asked to install an identical app.
 #
 # Doing it as separate `make` invocations rather than prerequisites, because
 # prerequisites of `dmg` would rebuild the bundle and discard its ticket.
@@ -538,9 +657,15 @@ release:
 	fi
 	@$(MAKE) --no-print-directory app-universal
 	@$(MAKE) --no-print-directory notarize-app NOTARY_PROFILE="$(NOTARY_PROFILE)"
+	@$(MAKE) --no-print-directory update-zip
 	@$(MAKE) --no-print-directory dmg-only
 	@$(MAKE) --no-print-directory notarize NOTARY_PROFILE="$(NOTARY_PROFILE)"
 	@$(MAKE) --no-print-directory verify-release
+	@if [ "$(APPCAST)" = "skip" ]; then \
+	  echo "appcast: skipped (APPCAST=skip); Mac users stay on their current version"; \
+	else \
+	  $(MAKE) --no-print-directory appcast; \
+	fi
 
 # What a buyer's Mac will conclude, asked here instead of finding out from them.
 #
@@ -568,6 +693,19 @@ verify-release:
 	  && echo "app: satisfies the helper's client requirement"
 	@test -f "/Volumes/$(VOL_NAME)/$(APP_NAME).app/Contents/Library/LaunchDaemons/$(notdir $(HELPER_PLIST))" \
 	  && echo "helper plist: present"
+	@codesign --verify --strict \
+	  -R='anchor apple generic and certificate leaf[subject.OU] = "$(TEAM_ID)"' \
+	  "/Volumes/$(VOL_NAME)/$(APP_NAME).app/Contents/Frameworks/Sparkle.framework" \
+	  && echo "sparkle: embedded, signed by team $(TEAM_ID)"
+	@test ! -e "/Volumes/$(VOL_NAME)/$(APP_NAME).app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
+	  && echo "sparkle: no XPC services (not sandboxed)"
+	@feed=$$(plutil -extract SUFeedURL raw "/Volumes/$(VOL_NAME)/$(APP_NAME).app/Contents/Info.plist"); \
+	key=$$(plutil -extract SUPublicEDKey raw "/Volumes/$(VOL_NAME)/$(APP_NAME).app/Contents/Info.plist"); \
+	if [ "$$feed" != "$(FEED_URL)" ] || [ "$$key" != "$(SPARKLE_PUBLIC_KEY)" ]; then \
+	  echo "error: update feed or key in the bundle is not the release one"; \
+	  echo "  feed: $$feed"; echo "  key:  $$key"; exit 1; \
+	fi; \
+	echo "updates: $$feed, key $$key"
 	@xcrun stapler validate "/Volumes/$(VOL_NAME)/$(APP_NAME).app" > /dev/null \
 	  && echo "ticket: stapled into the app"
 	@plutil -extract CFBundleShortVersionString raw \
@@ -597,4 +735,5 @@ check: check-version build
 	"$(BIN)" --check-system-demand
 	"$(BIN)" --check-notch
 	"$(BIN)" --check-credentials
+	"$(BIN)" --check-updates
 	"$(HELPER_BIN)" --self-test

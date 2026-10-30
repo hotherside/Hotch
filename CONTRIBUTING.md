@@ -4,7 +4,7 @@ Thanks for taking a look. Small, focused changes are easiest to review. Please o
 
 ## Get started
 
-Hotch is a native Swift and SwiftUI macOS app with no third-party package dependencies. It targets macOS 14 and uses Swift tools version 6.
+Hotch is a native Swift and SwiftUI macOS app. Its one third-party package is [Sparkle](https://sparkle-project.org) for in-app updates, pinned to an exact version in `Package.swift`; SwiftPM fetches it on the first build. Please discuss adding another before proposing it. It targets macOS 14 and uses Swift tools version 6.
 
 ```sh
 make app
@@ -12,7 +12,7 @@ make run
 make check
 ```
 
-`make app` creates `build/Hotch.app`; `make run` launches it. Use a Mac with a compatible Swift toolchain and macOS SDK. Hardware sensor readings and Backpack mode should be validated on real Mac hardware; CI can compile the code and run scripted checks but cannot validate all models, sensors, or lid behavior.
+`make app` creates `build/Hotch.app`; `make run` launches it. Like a release, a local build checks the release feed for updates once a day and would offer to replace itself with a newer published version; build with `make app FEED_URL=` for a copy that never checks. Use a Mac with a compatible Swift toolchain and macOS SDK. Hardware sensor readings and Backpack mode should be validated on real Mac hardware; CI can compile the code and run scripted checks but cannot validate all models, sensors, or lid behavior.
 
 ## Good first contributions
 

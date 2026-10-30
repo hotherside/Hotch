@@ -369,7 +369,7 @@ struct SettingsView: View {
 
             HotchMoreSettings(onPreviewAlert: onPreviewAlert)
 
-            sectionHeader("Updates").padding(.top, 18)
+            sectionHeader("Refresh").padding(.top, 18)
 
             HStack(spacing: 8) {
                 Text("Refresh every")
@@ -390,8 +390,10 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
 
+            UpdateSettings().padding(.top, 18)
+
             sectionHeader("Welcome & privacy").padding(.top, 18)
-            Text("Sessions, focus history and Mac readings stay on this Mac. Hotch has no account or analytics service. Only enabled providers request usage or balance from their own services.")
+            Text("Sessions, focus history and Mac readings stay on this Mac. Hotch has no account or analytics service. Only enabled providers request usage or balance from their own services, and the update check only asks whether a newer Hotch exists.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -769,6 +771,9 @@ final class SettingsWindowController {
         self.settings = settings
         self.store = store
     }
+
+    /// On screen, for the updater: a relaunch would close it under the user.
+    var isOpen: Bool { window?.isVisible == true }
 
     func show() {
         // The 440pt viewport still has to fit *this* display, title bar and all,

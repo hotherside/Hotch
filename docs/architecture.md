@@ -1,6 +1,6 @@
 # Architecture
 
-Hotch is a Swift Package that builds a menu-bar macOS app and a small helper executable. It uses SwiftUI for presentation and Apple frameworks for app lifecycle, process/system readings, and helper registration. There are no third-party package dependencies.
+Hotch is a Swift Package that builds a menu-bar macOS app and a small helper executable. It uses SwiftUI for presentation and Apple frameworks for app lifecycle, process/system readings, and helper registration. Its one third-party package is Sparkle, for in-app updates.
 
 ## Main areas
 
@@ -9,7 +9,8 @@ Hotch is a Swift Package that builds a menu-bar macOS app and a small helper exe
 - `Sources/BackpackShared/` defines the XPC contract shared by the app and helper.
 - `Sources/HotchBackpackHelper/` contains the privileged helper used by Backpack mode.
 - `Support/` contains the launch-daemon property list embedded in the app bundle.
-- `Makefile` builds the app bundle, packages disk images, and provides maintainer release and validation targets.
+- `Sources/Hotch/AppUpdater.swift` wraps Sparkle: when a scheduled update window may appear, when a downloaded update may relaunch the app, and the card's update line.
+- `Makefile` builds the app bundle, embeds and signs Sparkle, packages disk images and update archives, and provides maintainer release and validation targets.
 
 ## Data flow and boundaries
 
@@ -21,9 +22,11 @@ System sampling follows visible demand. Ordinary cards keep their live readings 
 
 Clipboard history is in-memory, text-only, and optional. Preserve its size limit, lifetime, disable behavior, and concealed/transient marker checks when changing it.
 
+Updates come from Sparkle and its appcast, the app's only request that is not to a provider. Each update is an EdDSA-signed zip of the notarised app, checked against the public key in `Info.plist` and the Developer ID before it replaces the bundle in place, which keeps the Backpack helper's registration path. Hotch is not sandboxed, so Sparkle's XPC services are stripped from the bundle. Anonymous system profiling is off. `UpdatePolicy` keeps scheduled windows off the welcome and Focus runs and holds automatic installs for a quiet moment; an update relaunch hands a running Focus timer to the new version.
+
 ## Checks
 
-`make check` is the repository's combined build and local validation entry point. `make helper-selftest` runs the helper's scripted state-machine check without issuing real power-management commands. CI can compile and run scripted checks, but physical Mac sensor behavior, signing prompts, and lid-close sleep behavior require manual validation on supported hardware.
+`make check` is the repository's combined build and local validation entry point; `--check-updates` covers the update timing rules without a feed. `make helper-selftest` runs the helper's scripted state-machine check without issuing real power-management commands. CI can compile and run scripted checks, but physical Mac sensor behavior, signing prompts, and lid-close sleep behavior require manual validation on supported hardware.
 
 ## Experimental Linux port
 
