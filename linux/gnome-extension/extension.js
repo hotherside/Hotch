@@ -351,7 +351,7 @@ class HotchIndicator extends PanelMenu.Button {
 
     _render() {
         this._ext.applyTheme();
-        const height = Math.max(160, Math.min(420, Main.layoutManager.primaryMonitor.height - Main.panel.height - 160));
+        const height = Math.max(160, Math.min(420, (Main.layoutManager.primaryMonitor?.height ?? 900) - Main.panel.height - 160));
         this._scroll.set_style(`max-height: ${height}px;`);
         this._renderPanel();
         this._ext.pill?.render(this._data);
@@ -933,6 +933,7 @@ export default class HotchExtension extends Extension {
             this.pill?.place(this.pill.x, this.pill.y);
         });
         this._indicator = new Indicator(this);
+        Main.panel.addToStatusArea(this.uuid, this._indicator);
         this.setHome(this.settings.home, false);
         this._syncClipboard();
         this._syncFocusTimer();
