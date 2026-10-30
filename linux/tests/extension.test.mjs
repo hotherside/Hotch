@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mergeUsage, MAX_USAGE_AGE, readingStatus} from '../gnome-extension/data.js';
+import {mergeUsage, MAX_USAGE_AGE, readingStatus, updateNotice} from '../gnome-extension/data.js';
 
 const good = {provider: 'claude', windows: [{percent: 42}], fetchedAt: 100, error: null};
 const failure = {provider: 'claude', windows: [], fetchedAt: null, error: 'Signed out'};
@@ -24,4 +24,17 @@ test('a successful empty result clears old usage and a recovery replaces it', ()
     assert.deepEqual(mergeUsage([empty], [good], 160), [empty]);
     const recovered = {...good, fetchedAt: 180, windows: [{percent: 43}]};
     assert.deepEqual(mergeUsage([recovered], [good], 180), [recovered]);
+});
+
+test('update notice respects a skipped version and the preference, and links only release pages', () => {
+    const update = {current: '2.3.0', latest: '2.4.0', checkedAt: 100, available: true,
+        url: 'https://github.com/hotherside/Hotch/releases/tag/v2.4.0'};
+    const on = {updateChecks: true, updateSkipped: ''};
+    assert.deepEqual(updateNotice(update, on), {version: '2.4.0', url: update.url});
+    assert.deepEqual(updateNotice(update, {...on, updateSkipped: '2.3.9'}), {version: '2.4.0', url: update.url});
+    assert.equal(updateNotice(update, {...on, updateSkipped: '2.4.0'}), null);
+    assert.equal(updateNotice(update, {...on, updateChecks: false}), null);
+    assert.equal(updateNotice({...update, available: false}, on), null);
+    assert.equal(updateNotice({...update, url: 'https://example.com/hotch_2.4.0-1_amd64.deb'}, on), null);
+    assert.equal(updateNotice(undefined, on), null);
 });

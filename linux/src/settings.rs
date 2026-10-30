@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub const HOMES: &[&str] = &["panel", "pill", "orb", "edge-left", "edge-right", "edge-bottom"];
 
@@ -22,7 +22,8 @@ pub struct Settings(pub Value);
 impl Default for Settings {
     fn default() -> Self {
         Self(json!({"home":"panel", "theme":"system", "displayMode":"used",
-            "refreshSeconds":60, "providers":["claude","codex"], "clipboardEnabled":false}))
+            "refreshSeconds":60, "providers":["claude","codex"], "clipboardEnabled":false,
+            "updateChecks":true, "updateSkipped":""}))
     }
 }
 
@@ -59,25 +60,41 @@ impl Settings {
         self.0["displayMode"] == "remaining"
     }
 
-    pub fn save(&self) -> std::io::Result<()> {
-        let target = path();
-        let dir = target.parent().unwrap();
-        fs::create_dir_all(dir)?;
-        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
-        let temp = dir.join(format!(".settings-{}.tmp", std::process::id()));
-        let result = (|| {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o600)
-                .open(&temp)?;
-            file.write_all(self.0.to_string().as_bytes())?;
-            file.sync_all()?;
-            fs::rename(&temp, &target)
-        })();
-        let _ = fs::remove_file(temp);
-        result
+    /// The daily automatic check; `hotch update-check` asks regardless.
+    pub fn update_checks(&self) -> bool {
+        self.0["updateChecks"] != false
     }
+
+    /// The release the user chose to skip in the update notice.
+    pub fn skipped(&self) -> Option<&str> {
+        self.0["updateSkipped"].as_str().filter(|v| !v.is_empty())
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        write_private(&path(), self.0.to_string().as_bytes())
+    }
+}
+
+/// Replaces `target` atomically with a file only this user can read, in a
+/// directory only they can list.
+pub fn write_private(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let dir = target.parent().unwrap();
+    fs::create_dir_all(dir)?;
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let temp = dir.join(format!(".{name}-{}.tmp", std::process::id()));
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temp, target)
+    })();
+    let _ = fs::remove_file(temp);
+    result
 }
 
 fn valid(key: &str, value: &Value) -> bool {
@@ -89,7 +106,10 @@ fn valid(key: &str, value: &Value) -> bool {
         "providers" => value
             .as_array()
             .is_some_and(|a| a.iter().all(|v| matches!(v.as_str(), Some("claude" | "codex")))),
-        "clipboardEnabled" => value.is_boolean(),
+        "clipboardEnabled" | "updateChecks" => value.is_boolean(),
+        "updateSkipped" => value
+            .as_str()
+            .is_some_and(|v| v.is_empty() || crate::update::Version::parse(v).is_some()),
         "pillX" | "pillY" => value.as_f64().is_some_and(|v| v.is_finite()),
         "focus" => value.is_object(),
         _ => false,
@@ -125,5 +145,20 @@ mod tests {
         assert!(!valid("clipboardEnabled", &json!("true")));
         assert!(valid("providers", &json!([])));
         assert!(valid("home", &json!("edge-left")));
+        assert!(valid("updateChecks", &json!(false)));
+        assert!(!valid("updateChecks", &json!("off")));
+        assert!(valid("updateSkipped", &json!("2.4.0")));
+        assert!(valid("updateSkipped", &json!("")));
+        assert!(!valid("updateSkipped", &json!("latest")));
+    }
+
+    #[test]
+    fn update_checks_default_on() {
+        let settings = Settings::default();
+        assert!(settings.update_checks());
+        assert_eq!(settings.skipped(), None);
+        let off = Settings(json!({"updateChecks": false, "updateSkipped": "2.4.0"}));
+        assert!(!off.update_checks());
+        assert_eq!(off.skipped(), Some("2.4.0"));
     }
 }

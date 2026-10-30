@@ -9,12 +9,47 @@ on:
         description: 'Existing release tag (must match the source versions)'
         required: true
         type: string
+      force:
+        description: 'Attach Linux assets even if Linux is unchanged since the previous release'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
+  # Versions move in lockstep with macOS, so a release can change macOS alone.
+  # It then gets no Linux assets, and the Linux update notice, which looks for
+  # the newest release with a .deb, does not offer it.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      linux: ${{ steps.diff.outputs.linux }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compare Linux inputs with the previous release
+        id: diff
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            echo "linux=true" >> "$GITHUB_OUTPUT"
+            echo "Linux assets forced for $RELEASE_TAG." >> "$GITHUB_STEP_SUMMARY"
+          else
+            python3 linux/tools/linux_changed.py --tag "$RELEASE_TAG" > linux-changes.txt
+            cat linux-changes.txt
+            { echo '```'; cat linux-changes.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   package:
+    needs: changes
+    if: needs.changes.outputs.linux == 'true'
     strategy:
       fail-fast: false
       matrix:
