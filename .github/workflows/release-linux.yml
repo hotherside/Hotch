@@ -27,14 +27,18 @@ jobs:
     outputs:
       linux: ${{ steps.diff.outputs.linux }}
     steps:
+      # The workflow's own commit, not the release tag, so a manual retry for a
+      # tag made before linux_changed.py existed still has it. Every tag comes
+      # with the full history.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Compare Linux inputs with the previous release
+      - name: Compare Linux inputs with the last release that has Linux packages
         id: diff
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
           FORCE: ${{ inputs.force }}
         run: |
@@ -42,7 +46,8 @@ jobs:
             echo "linux=true" >> "$GITHUB_OUTPUT"
             echo "Linux assets forced for $RELEASE_TAG." >> "$GITHUB_STEP_SUMMARY"
           else
-            python3 linux/tools/linux_changed.py --tag "$RELEASE_TAG" > linux-changes.txt
+            gh api --paginate "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+            python3 linux/tools/linux_changed.py --tag "$RELEASE_TAG" --releases "$RUNNER_TEMP/releases.json" > linux-changes.txt
             cat linux-changes.txt
             { echo '```'; cat linux-changes.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
