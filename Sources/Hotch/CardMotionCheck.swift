@@ -679,7 +679,7 @@ enum CardMotionCheck {
 
     // MARK: Fixture
 
-    private static func demoDeps() -> CardDeps {
+    static func demoDeps() -> CardDeps {
         let store = UsageStore(providers: [ClaudeProvider(allowRemote: false), CodexProvider(allowRemote: false)])
         store.usages = Snapshot.demoUsages()
         store.lastRefresh = Date().addingTimeInterval(-32)

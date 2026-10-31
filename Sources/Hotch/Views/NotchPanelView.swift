@@ -361,18 +361,17 @@ struct PanelPagesView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            if let offer = updates.offer, model.revealHint == nil, !model.backpackCard {
-                UpdatePill(offer: offer) { updates.checkForUpdates() }
-            } else {
-                Text(footerText)
-                    .font(.system(size: 11))
-                    .foregroundStyle(HP.text3)
-                    .lineLimit(1)
-                    .contentTransition(.identity)
-            }
+            Text(footerText)
+                .font(.system(size: 11))
+                .foregroundStyle(HP.text3)
+                .lineLimit(1)
+                .contentTransition(.identity)
             Spacer(minLength: 8)
             BackpackShortcut(backpack: backpack, selected: model.backpackCard,
                              action: actions.toggleBackpackCard)
+            if let offer = updates.offer, model.revealHint == nil {
+                UpdateButton(offer: offer) { updates.checkForUpdates() }
+            }
             footerButton("gearshape.fill", tint: HP.text2, help: "Hotch Settings", action: actions.openSettings)
         }
         .padding(.leading, NotchTheme.contentInset)

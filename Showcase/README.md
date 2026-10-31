@@ -1,5 +1,26 @@
 # Hotch showcase source
 
+## Current README media
+
+The README's tour, boards and screenshots show the current design and need nothing beyond the Swift toolchain. The app films itself: `--render-tour` drives the real edge tab and card on demo data with a scripted pointer, in windows that are drawn but never shown, and encodes the movie and GIF with AVFoundation and ImageIO. No screen recording permission is needed, and the mouse is free while it runs.
+
+```sh
+swift build
+.build/out/Products/Debug/Hotch --render-tour docs/marketing/video
+.build/out/Products/Debug/Hotch --snapshot-parts build/parts-light
+.build/out/Products/Debug/Hotch --snapshot-parts build/parts-dark --snapshot-dark
+swift tools/compose-media.swift build/parts-light build/parts-dark docs/marketing/screenshots
+cp build/parts-light/card-desk-idle.png docs/marketing/screenshots/focus-setup.png
+.build/out/Products/Debug/Hotch --snapshot-demo docs/marketing/screenshots/notch-focus.png --snapshot-notch --snapshot-page desk
+.build/out/Products/Debug/Hotch --snapshot-overview docs/marketing/screenshots/overview-dark.png --snapshot-dark
+```
+
+`--render-tour` also writes `tour-ai-dark.png` and `tour-ai-light.png` beside the movie, stills of each take with the AI tab open; move them out before committing. (`swift build --show-bin-path` prints where the binary is if your toolchain puts it elsewhere.)
+
+## The 2.4 reel
+
+Everything below made the 2.4 reel and stills, which show the six-section design.
+
 The 26-second reel and the README GIF show the real app. `Hotch --demo-tour` runs the real anchors on demo data and plays a fixed sequence, `tools/record-tour.swift` records only Hotch's windows (no desktop, no other apps), and that recording is placed on a stand-in desktop and framed here with HyperFrames. A dark and a light take are recorded with the same timing, so the reel can sweep between them mid-motion.
 
 Nothing in the footage is a mock-up of Hotch: the cards, tab, notch panel, alerts, pill, orb and Dock bar are the app drawing itself. The desktop (wallpaper, menu bar, terminal, Dock icons) is drawn in `plates/desktop.html`, and the notch is a stand-in for a 14" MacBook Pro's. The session names and figures are fictional.

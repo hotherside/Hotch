@@ -238,6 +238,13 @@ if npArguments.contains("--snapshot") {
     }
 }
 
+// Films the real edge tab and card on demo data, offscreen, for the README.
+if npArguments.contains("--render-tour") {
+    MainActor.assumeIsolated {
+        TourFilm.runAndExit(directory: npValue(after: "--render-tour", default: "build/tour"))
+    }
+}
+
 // Plays a fixed tour of the real anchors on demo data, for screen recordings.
 if npArguments.contains("--demo-tour") {
     MainActor.assumeIsolated {

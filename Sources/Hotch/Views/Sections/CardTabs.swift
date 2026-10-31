@@ -716,44 +716,48 @@ struct CompactDesk: View {
 
 // MARK: - Update
 
-/// A found update, as a button on the footer of every tab. It takes the
-/// status line's place until the update is dealt with, so it is the first
-/// thing the eye lands on below the content without ever covering it.
-struct UpdatePill: View {
+/// A found update, as a button beside Settings in the footer of every tab:
+/// filled violet, the one coloured control down there, so it is seen at a
+/// glance without taking the status line's place. It is there only while
+/// something is waiting to install.
+struct UpdateButton: View {
     let offer: AppUpdater.Offer
     var action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(HP.ok)
-                ViewThatFits(in: .horizontal) {
-                    Text(label)
-                    Text(shortLabel)
-                }
-                .foregroundStyle(HP.text)
+            HStack(spacing: 4) {
+                Image(systemName: symbol)
+                Text(label)
             }
             .font(.system(size: 11.5, weight: .semibold))
+            .foregroundStyle(.white)
             .lineLimit(1)
-            .padding(.leading, 6).padding(.trailing, 9)
+            .fixedSize()
+            .padding(.leading, 6).padding(.trailing, 8)
             .frame(height: 22)
-            .background(Capsule(style: .continuous).fill(HP.ok.opacity(0.16)))
+            .background(Capsule(style: .continuous).fill(UpdateButton.violet.opacity(hovering ? 0.86 : 1)))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .modifier(KeyboardFocusRing(radius: 11))
         .help(help)
         .accessibilityLabel(help)
     }
 
-    private var label: String {
+    /// White on either clears 4.5:1, so the small label stays readable.
+    static let violet = Dynamic.color(dark: Dynamic.rgb(0.49, 0.36, 0.93), light: Dynamic.rgb(0.44, 0.30, 0.86))
+
+    private var symbol: String {
         switch offer {
-        case .available(let version): return "Update to Hotch \(version)"
-        case .ready: return "Restart to update"
+        case .available: return "arrow.down.circle.fill"
+        case .ready: return "arrow.clockwise.circle.fill"
         }
     }
 
-    private var shortLabel: String {
+    private var label: String {
         switch offer {
         case .available: return "Update"
         case .ready: return "Restart"
@@ -762,7 +766,7 @@ struct UpdatePill: View {
 
     private var help: String {
         switch offer {
-        case .available(let version): return "Show what's new in Hotch \(version) and install it"
+        case .available(let version): return "Update to Hotch \(version): see what's new and install it"
         case .ready(let version): return "Restart Hotch now to finish updating to \(version)"
         }
     }
