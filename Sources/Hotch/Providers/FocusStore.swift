@@ -642,7 +642,8 @@ final class FocusStore: ObservableObject {
     /// Same custody as the usage history: start times, durations, the names you
     /// typed and which project they were for — nothing secret, hand-encoded so
     /// a bad file costs the log and never the launch. Days other than today are
-    /// dropped on load rather than accumulated; the task memory is not, because
+    /// dropped on load rather than accumulated (all but a run handed across an
+    /// update relaunch, which is still in progress); the task memory is not, because
     /// remembering that "FRNSW DEV" is 30 minutes is the opposite of a day's
     /// worth of rows.
     private func write(now: Date, onlyIfDue: Bool = false, handoff: [String: Any]? = nil) {
@@ -686,18 +687,23 @@ final class FocusStore: ObservableObject {
         // costs one line and saves today's tally on the upgrade; only today is
         // ever loaded, so the fallback stops mattering after one day.
         guard let items = (root["entries"] ?? root["stints"]) as? [[String: Any]] else { return }
+        let handoff = handoff(root["relaunch"], now: now)
         let calendar = Calendar.current
         todayEntries = items.compactMap { item in
             guard let start = JSONWalk.double(item["startedAt"]),
                   let duration = JSONWalk.double(item["duration"]) else { return nil }
             let startedAt = Date(timeIntervalSince1970: start)
-            guard calendar.isDateInToday(startedAt) else { return nil }
             // Entries written before names and lengths existed simply have none.
             let title = (item["title"] as? String).map(FocusStore.clean) ?? ""
             // Same tolerance for the id: a line written before entries had one
             // gets a fresh id here rather than being dropped. Nothing outside
             // this file refers to it, so a new one costs nothing.
             let id = JSONWalk.string(item["id"]).flatMap(UUID.init(uuidString:)) ?? UUID()
+            // Only today's lines, except the run being handed across an update
+            // relaunch: one started before midnight is still counting, as it
+            // would have been without the restart. A crashed run from before
+            // midnight stays yesterday's, like every other line from then.
+            guard calendar.isDate(startedAt, inSameDayAs: now) || id == handoff?.id else { return nil }
             // A line whose run never closed — a crash, a force quit — comes
             // back as a **finished** entry of the duration it had reached.
             // Deliberately not resumed: a timer counting again because the app
@@ -709,25 +715,38 @@ final class FocusStore: ObservableObject {
                               title: title, length: JSONWalk.double(item["length"]),
                               isRunning: false)
         }
-        resumeHandoff(root["relaunch"], now: now)
+        if let handoff { resumeHandoff(handoff, now: now) }
     }
 
-    /// The one exception to "nothing resumes on launch": a run this app wrote
-    /// down for its own update relaunch moments ago. See `handOffForRelaunch`.
-    private func resumeHandoff(_ raw: Any?, now: Date) {
+    /// A run this app wrote down for its own update relaunch moments ago.
+    private struct Handoff {
+        let id: UUID
+        let at: Date
+        let banked: TimeInterval
+        let paused: Bool
+    }
+
+    /// The hand-off in the file, if it was written within the window.
+    private func handoff(_ raw: Any?, now: Date) -> Handoff? {
         guard let handoff = raw as? [String: Any],
               let id = JSONWalk.string(handoff["id"]).flatMap(UUID.init(uuidString:)),
               let at = JSONWalk.double(handoff["at"]).map(Date.init(timeIntervalSince1970:)),
               let banked = JSONWalk.double(handoff["banked"]),
               case let gap = now.timeIntervalSince(at),
-              gap >= 0, gap <= FocusStore.relaunchHandoffWindow,
-              let index = todayEntries.firstIndex(where: { $0.id == id }) else { return }
+              gap >= 0, gap <= FocusStore.relaunchHandoffWindow else { return nil }
+        return Handoff(id: id, at: at, banked: banked, paused: handoff["paused"] as? Bool ?? false)
+    }
+
+    /// The one exception to "nothing resumes on launch": a run this app wrote
+    /// down for its own update relaunch moments ago. See `handOffForRelaunch`.
+    private func resumeHandoff(_ handoff: Handoff, now: Date) {
+        guard let index = todayEntries.firstIndex(where: { $0.id == handoff.id }) else { return }
         let entry = todayEntries[index]
-        let paused = handoff["paused"] as? Bool ?? false
         // The segment reopens at the moment of the hand-off, so the install
         // counts. A countdown that ran out meanwhile closes on the next tick.
-        let run = Run(entryID: id, startedAt: entry.startedAt, length: entry.length,
-                      title: entry.title, banked: banked, segmentStart: paused ? nil : at)
+        let run = Run(entryID: handoff.id, startedAt: entry.startedAt, length: entry.length,
+                      title: entry.title, banked: handoff.banked,
+                      segmentStart: handoff.paused ? nil : handoff.at)
         state = .running(run)
         todayEntries[index] = liveEntry(run, now: now)
     }

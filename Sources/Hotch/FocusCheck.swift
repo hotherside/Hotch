@@ -437,6 +437,31 @@ enum FocusCheck {
                                    now: quitAt.addingTimeInterval(FocusStore.relaunchHandoffWindow + 1))
             check("a stale hand-off comes back finished",
                   !stale.isRunning && stale.todayEntries.first?.isRunning == false)
+
+            // Across midnight: the log keeps only today, but a run handed off
+            // at 23:59 is still the run in progress at 00:00.
+            let midnight = Calendar.current.startOfDay(for: today)
+            let evening = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(-60))
+            evening.inject(state: .idle, entries: [])
+            evening.start(minutes: 60, now: midnight.addingTimeInterval(-30 * 60))
+            let lateID = evening.run?.entryID
+            evening.handOffForRelaunch(now: midnight.addingTimeInterval(-3))
+            let morning = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(5))
+            check("a run handed off before midnight is still running after it", morning.isRunning)
+            check("as the same line", morning.run?.entryID == lateID && morning.todayEntries.count == 1)
+            check("with the restart counted",
+                  morning.elapsed(now: midnight.addingTimeInterval(5)).map { abs($0 - (30 * 60 + 5)) < 0.001 } ?? false,
+                  "\(morning.elapsed(now: midnight.addingTimeInterval(5)) ?? -1)")
+
+            // A crash is not a hand-off: yesterday's line stays yesterday's.
+            let crashed = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(-60))
+            crashed.inject(state: .idle, entries: [])
+            crashed.start(minutes: 60, now: midnight.addingTimeInterval(-30 * 60))
+            crashed.tick(now: midnight.addingTimeInterval(-3))
+            let after = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(5))
+            check("a run that crashed before midnight is left in yesterday",
+                  !after.isRunning && after.todayEntries.isEmpty,
+                  "\(after.todayEntries.count) entries")
         }
 
         print("the length is remembered, never chosen for you")
