@@ -6,8 +6,8 @@ export const HOMES = [
 export const DEFAULTS = {home: 'panel', theme: 'system', displayMode: 'used',
     refreshSeconds: 60, providers: ['claude', 'codex'], clipboardEnabled: false,
     updateChecks: true, updateSkipped: ''};
-// Mirrors Version::parse in src/update.rs.
-const VERSION = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+// Mirrors Version::parse in src/update.rs: plain release versions only.
+const VERSION = /^v?\d+\.\d+\.\d+$/;
 
 export function normalizeSettings(raw = {}) {
     const result = {...DEFAULTS, providers: [...DEFAULTS.providers]};
@@ -20,7 +20,9 @@ export function normalizeSettings(raw = {}) {
         result.providers = [...new Set(raw.providers)];
     if (typeof raw.clipboardEnabled === 'boolean') result.clipboardEnabled = raw.clipboardEnabled;
     if (typeof raw.updateChecks === 'boolean') result.updateChecks = raw.updateChecks;
-    if (raw.updateSkipped === '' || VERSION.test(raw.updateSkipped)) result.updateSkipped = raw.updateSkipped;
+    // Kept as the notice names it: `v2.4.0` set by hand skips 2.4.0.
+    if (typeof raw.updateSkipped === 'string' && (raw.updateSkipped === '' || VERSION.test(raw.updateSkipped)))
+        result.updateSkipped = raw.updateSkipped.replace(/^v/, '');
     for (const key of ['pillX', 'pillY'])
         if (Number.isFinite(raw[key])) result[key] = raw[key];
     result.focus = normalizeFocus(raw.focus);

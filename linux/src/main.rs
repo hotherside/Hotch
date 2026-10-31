@@ -48,7 +48,8 @@ fn main() {
             let answered = status.answered == Some(true);
             print(
                 json,
-                json!({"update": status.to_json(), "answered": answered}),
+                json!({"update": status.to_json(), "answered": answered,
+                    "supported": update::deb_arch().is_some()}),
                 update_check_text,
             );
             if !answered {

@@ -68,10 +68,8 @@ pub fn status(check: Check) -> Status {
     let settings = Settings::load();
     let mut cache = Cache::load();
     let enabled = settings.update_checks();
-    let answered = deb_arch().and_then(|arch| refresh(&mut cache, check, enabled, arch, unix_now(), fetch));
-    if answered.is_some() {
-        let _ = settings::write_private(&cache_path(), cache.to_json().to_string().as_bytes());
-    }
+    let save = |cache: &Cache| settings::write_private(&cache_path(), cache.to_json().to_string().as_bytes()).is_ok();
+    let answered = deb_arch().and_then(|arch| refresh(&mut cache, check, enabled, arch, unix_now(), save, fetch));
     summarise(cache, env!("CARGO_PKG_VERSION"), settings.skipped(), answered)
 }
 
@@ -137,34 +135,47 @@ impl Cache {
     }
 }
 
-/// A cached release, trusted only if it still looks like one Hotch wrote.
+/// A cached release, trusted only if it still looks like one Hotch wrote: a
+/// plain version and the release page of that very tag.
 fn release(v: &Value) -> Option<Release> {
-    let version = v["version"].as_str().filter(|s| Version::parse(s).is_some())?;
-    let url = v["url"].as_str().filter(|u| u.starts_with(RELEASE_PAGE))?;
-    Some(Release {
+    let version = v["version"]
+        .as_str()
+        .filter(|s| !s.starts_with('v') && Version::parse(s).is_some())?;
+    let tag = v["url"].as_str()?.strip_prefix(RELEASE_PAGE)?;
+    (tag.strip_prefix('v').unwrap_or(tag) == version).then(|| Release {
         version: version.into(),
-        url: url.into(),
+        url: format!("{RELEASE_PAGE}{tag}"),
     })
 }
 
 /// Asks once when `check` calls for it. A failure only moves `attempted_at`.
+/// `save` writes the cache and says whether it could.
 fn refresh(
     cache: &mut Cache,
     check: Check,
     enabled: bool,
     arch: &str,
     now: i64,
+    save: impl Fn(&Cache) -> bool,
     fetch: impl FnOnce() -> Option<Value>,
 ) -> Option<bool> {
     if check == Check::IfDue && !(enabled && cache.due(now)) {
         return None;
     }
+    // Recorded before asking, so GNOME, the tray and the CLI do not ask at
+    // once. A cache that cannot be written (owned by root, read-only, full)
+    // would otherwise make every poll a request, so the automatic check then
+    // stays off.
     cache.attempted_at = Some(now);
+    if !save(cache) && check == Check::IfDue {
+        return None;
+    }
     let Some(list) = fetch().filter(Value::is_array) else {
         return Some(false);
     };
     cache.checked_at = Some(now);
     cache.latest = latest_linux(&list, arch);
+    save(cache);
     Some(true)
 }
 
@@ -210,29 +221,17 @@ fn latest_linux(releases: &Value, arch: &str) -> Option<Release> {
     })
 }
 
-/// `MAJOR.MINOR.PATCH` with an optional `-prerelease`, after an optional `v`.
-/// Compared numerically; a prerelease sorts before its release.
+/// A release version: plain `MAJOR.MINOR.PATCH` after an optional `v`,
+/// compared numerically. A suffixed tag (`v2.5.0-rc.1`) is never offered,
+/// even when published without GitHub's prerelease flag.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Version {
-    core: [u64; 3],
-    release: bool,
-    pre: String,
-}
+pub struct Version([u64; 3]);
 
 impl Version {
     pub fn parse(text: &str) -> Option<Self> {
         let text = text.strip_prefix('v').unwrap_or(text);
-        let (core, pre) = text.split_once('-').unwrap_or((text, ""));
-        let numbers: Vec<u64> = core.split('.').map(number).collect::<Option<_>>()?;
-        let pre_ok = pre.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
-        if !pre_ok || (pre.is_empty() && text.ends_with('-')) {
-            return None;
-        }
-        Some(Version {
-            core: numbers.try_into().ok()?,
-            release: pre.is_empty(),
-            pre: pre.into(),
-        })
+        let numbers: Vec<u64> = text.split('.').map(number).collect::<Option<_>>()?;
+        Some(Version(numbers.try_into().ok()?))
     }
 }
 
@@ -240,9 +239,12 @@ fn number(part: &str) -> Option<u64> {
     part.bytes().all(|b| b.is_ascii_digit()).then(|| part.parse().ok())?
 }
 
+/// Whether release `candidate` is newer than this build, which may be a
+/// prerelease: 2.4.0 is newer than 2.4.0-beta.1.
 pub fn is_newer(candidate: &str, current: &str) -> bool {
-    match (Version::parse(candidate), Version::parse(current)) {
-        (Some(candidate), Some(current)) => candidate > current,
+    let (core, pre) = current.split_once('-').unwrap_or((current, ""));
+    match (Version::parse(candidate), Version::parse(core)) {
+        (Some(candidate), Some(current)) => candidate > current || (candidate == current && !pre.is_empty()),
         _ => false,
     }
 }
@@ -311,19 +313,36 @@ mod tests {
             {"tag_name": "v2.5.0", "draft": true, "assets": [deb("2.5.0", "amd64"), deb("2.5.0", "arm64")]},
             {"tag_name": "v2.3.0", "assets": [dmg("2.3.0"), deb("2.3.0", "amd64"), deb("2.3.0", "arm64")]},
             {"tag_name": "v2.4.0", "assets": [dmg("2.4.0"), deb("2.4.0", "amd64")]},
+            {"tag_name": "v2.5.0-rc.1", "assets": [deb("2.5.0-rc.1", "amd64"), deb("2.5.0-rc.1", "arm64")]},
             {"tag_name": "v2.10.0", "assets": [dmg("2.10.0"), {"name": "hotch_2.10.0-1_arm64.deb", "state": "open"}]}
         ])
+    }
+
+    fn kept(_: &Cache) -> bool {
+        true
     }
 
     #[test]
     fn versions_compare_numerically() {
         assert!(is_newer("2.4.0", "2.3.0"));
         assert!(is_newer("v2.10.0", "2.9.9"));
-        assert!(is_newer("2.4.0", "2.4.0-beta.1"));
-        assert!(!is_newer("2.4.0-beta.1", "2.4.0"));
-        assert!(!is_newer("2.3.0", "2.3.0"));
+        assert!(
+            is_newer("2.4.0", "2.4.0-beta.1"),
+            "a release is newer than its prerelease build"
+        );
+        assert!(!is_newer("2.4.0", "2.4.0"));
         assert!(!is_newer("2.2.9", "2.3.0"));
-        for bad in ["2.4", "2.4.0.1", "2.4.0-", "+2.4.0", "2.4.0+build", "latest", ""] {
+        assert!(!is_newer("2.5.0-rc.1", "2.4.0"), "suffixed tags are never offered");
+        for bad in [
+            "2.4",
+            "2.4.0.1",
+            "2.4.0-",
+            "2.5.0-rc.1",
+            "+2.4.0",
+            "2.4.0+build",
+            "latest",
+            "",
+        ] {
             assert!(Version::parse(bad).is_none(), "{bad}");
         }
     }
@@ -345,24 +364,29 @@ mod tests {
     fn checks_daily_and_never_while_disabled() {
         let mut cache = Cache::default();
         let never = || -> Option<Value> { panic!("disabled checks must not reach the network") };
-        assert_eq!(refresh(&mut cache, Check::IfDue, false, "amd64", 1000, never), None);
+        assert_eq!(
+            refresh(&mut cache, Check::IfDue, false, "amd64", 1000, kept, never),
+            None
+        );
         assert_eq!(cache, Cache::default());
 
         assert_eq!(
-            refresh(&mut cache, Check::IfDue, true, "amd64", 1000, || Some(releases())),
+            refresh(&mut cache, Check::IfDue, true, "amd64", 1000, kept, || Some(releases())),
             Some(true)
         );
         assert_eq!(cache.latest.as_ref().unwrap().version, "2.4.0");
         assert_eq!(
-            refresh(&mut cache, Check::IfDue, true, "amd64", 1000 + DAY - 1, never),
+            refresh(&mut cache, Check::IfDue, true, "amd64", 1000 + DAY - 1, kept, never),
             None
         );
-        let checked = refresh(&mut cache, Check::IfDue, true, "amd64", 1000 + DAY, || Some(json!([])));
+        let checked = refresh(&mut cache, Check::IfDue, true, "amd64", 1000 + DAY, kept, || {
+            Some(json!([]))
+        });
         assert_eq!(checked, Some(true));
         assert_eq!(cache.latest, None);
 
         // On demand asks at once, even with automatic checks off.
-        let now = refresh(&mut cache, Check::Now, false, "arm64", 1000 + DAY + 5, || {
+        let now = refresh(&mut cache, Check::Now, false, "arm64", 1000 + DAY + 5, kept, || {
             Some(releases())
         });
         assert_eq!(now, Some(true));
@@ -372,10 +396,10 @@ mod tests {
     #[test]
     fn offline_failure_is_silent_keeps_the_last_answer_and_retries_hourly() {
         let mut cache = Cache::default();
-        refresh(&mut cache, Check::IfDue, true, "amd64", 1000, || Some(releases()));
+        refresh(&mut cache, Check::IfDue, true, "amd64", 1000, kept, || Some(releases()));
         let later = 1000 + 2 * DAY;
         assert_eq!(
-            refresh(&mut cache, Check::IfDue, true, "amd64", later, || None),
+            refresh(&mut cache, Check::IfDue, true, "amd64", later, kept, || None),
             Some(false)
         );
         assert_eq!(cache.checked_at, Some(1000));
@@ -384,13 +408,51 @@ mod tests {
         // A rate-limit body is not a release list.
         let limited = || Some(json!({"message": "API rate limit exceeded"}));
         assert_eq!(
-            refresh(&mut cache, Check::Now, true, "amd64", later + 1, limited),
+            refresh(&mut cache, Check::Now, true, "amd64", later + 1, kept, limited),
             Some(false)
         );
         assert_eq!(cache.latest.as_ref().unwrap().version, "2.4.0");
         assert!(!cache.due(later + 1 + RETRY - 1));
         assert!(cache.due(later + 1 + RETRY));
         assert!(cache.due(0), "a clock moved backwards checks again");
+    }
+
+    #[test]
+    fn attempts_are_saved_before_asking_and_an_unwritable_cache_stops_automatic_checks() {
+        let saved = std::cell::RefCell::new(vec![]);
+        let record = |cache: &Cache| {
+            saved.borrow_mut().push(cache.clone());
+            true
+        };
+        let fetch = || {
+            let attempt = saved.borrow().last().cloned().unwrap();
+            assert_eq!((attempt.attempted_at, attempt.checked_at), (Some(1000), None));
+            Some(releases())
+        };
+        let mut cache = Cache::default();
+        assert_eq!(
+            refresh(&mut cache, Check::IfDue, true, "amd64", 1000, record, fetch),
+            Some(true)
+        );
+        assert_eq!(saved.into_inner().last(), Some(&cache));
+
+        let never = || -> Option<Value> { panic!("an unwritable cache must not make every poll a request") };
+        let mut cache = Cache::default();
+        assert_eq!(
+            refresh(&mut cache, Check::IfDue, true, "amd64", 1000, |_| false, never),
+            None
+        );
+        // Asked for explicitly, it still answers.
+        let now = refresh(
+            &mut cache,
+            Check::Now,
+            true,
+            "amd64",
+            1000,
+            |_| false,
+            || Some(releases()),
+        );
+        assert_eq!(now, Some(true));
     }
 
     #[test]
@@ -408,8 +470,15 @@ mod tests {
         assert_eq!(status.to_json()["latest"], "2.4.0");
         assert_eq!(status.to_json()["checkedAt"], 1000);
         assert_eq!(release(&cache.to_json()["latest"]), cache.latest);
+        for url in [
+            "https://example.com/",
+            "https://github.com/hotherside/Hotch/releases/tag/v2.5.0",
+            "https://github.com/hotherside/Hotch/releases/tag/../../../../x/y/releases",
+        ] {
+            assert_eq!(release(&json!({"version": "2.4.0", "url": url})), None, "{url}");
+        }
         assert_eq!(
-            release(&json!({"version": "2.4.0", "url": "https://example.com/"})),
+            release(&json!({"version": "2.5.0-rc.1", "url": format!("{RELEASE_PAGE}v2.5.0-rc.1")})),
             None
         );
     }

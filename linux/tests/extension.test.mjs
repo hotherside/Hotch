@@ -35,6 +35,11 @@ test('update notice respects a skipped version and the preference, and links onl
     assert.equal(updateNotice(update, {...on, updateSkipped: '2.4.0'}), null);
     assert.equal(updateNotice(update, {...on, updateChecks: false}), null);
     assert.equal(updateNotice({...update, available: false}, on), null);
-    assert.equal(updateNotice({...update, url: 'https://example.com/hotch_2.4.0-1_amd64.deb'}, on), null);
+    for (const url of ['https://example.com/hotch_2.4.0-1_amd64.deb',
+        'https://github.com/hotherside/Hotch/releases/tag/v2.5.0',
+        'https://github.com/hotherside/Hotch/releases/tag/../../../../x/y/releases'])
+        assert.equal(updateNotice({...update, url}, on), null, url);
+    assert.equal(updateNotice({...update, latest: '2.5.0-rc.1',
+        url: 'https://github.com/hotherside/Hotch/releases/tag/v2.5.0-rc.1'}, on), null);
     assert.equal(updateNotice(undefined, on), null);
 });

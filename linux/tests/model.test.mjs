@@ -21,8 +21,8 @@ test('update preferences keep only a boolean switch and a release version to ski
     assert.equal(normalizeSettings({updateChecks: false}).updateChecks, false);
     assert.equal(normalizeSettings({updateChecks: 'off'}).updateChecks, true);
     assert.equal(normalizeSettings({updateSkipped: '2.4.0'}).updateSkipped, '2.4.0');
-    assert.equal(normalizeSettings({updateSkipped: '2.5.0-beta.1'}).updateSkipped, '2.5.0-beta.1');
-    for (const bad of ['latest', '2.4', '2.4.0+build', 7, null])
+    assert.equal(normalizeSettings({updateSkipped: 'v2.4.0'}).updateSkipped, '2.4.0', 'set by hand with a v');
+    for (const bad of ['latest', '2.4', '2.4.0+build', '2.5.0-beta.1', ['2.4.0'], 7, null])
         assert.equal(normalizeSettings({updateSkipped: bad}).updateSkipped, '');
 });
 
