@@ -1,6 +1,6 @@
 # Hotch
 
-Hotch is a native macOS companion for a glance at AI plan usage, active Claude Code and Codex work, and Mac activity. Keep it on a screen edge, by the Dock, around the notch, floating on your desktop, or in the menu bar. It is built with Swift and SwiftUI, targets macOS 14 or later, and has no third-party package dependencies.
+Hotch is a native macOS companion for a glance at AI plan usage, active Claude Code and Codex work, and Mac activity. Keep it on a screen edge, by the Dock, around the notch, floating on your desktop, or in the menu bar. It is built with Swift and SwiftUI, targets macOS 14 or later, and its one third-party package is [Sparkle](https://sparkle-project.org), which keeps the Mac app up to date.
 
 [![Hotch on the screen edge: the tab opens AI usage and live agent sessions, a sweep turns the desktop from dark to light, then Mac health, an alert, and the original notch view](docs/marketing/video/hotch-reel.gif)](docs/marketing/video/hotch-reel.mp4)
 
@@ -48,6 +48,8 @@ Download `Hotch-2.3.0.dmg` from the [latest release](https://github.com/hothersi
 
 Hotch is signed with a Developer ID and notarised by Apple, so it opens like any other app. A short welcome helps you choose where it lives, then points to it.
 
+From 2.4.0, Hotch updates itself. Once a day it checks for a new version and shows what changed, with Install, Remind Me Later and Skip This Version. To have updates download and install on their own instead, or to stop checking, use **Settings → App updates**; automatic installs wait until the card is closed and no Focus timer or Backpack session is running. Hotch 2.3.0 and earlier cannot update themselves: download the latest version once more and later ones arrive in the app.
+
 To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.3.0.dmg` with the SHA-256 shown next to the file on the release page.
 
 Prefer to build it yourself? See [Build from source](#build-from-source).
@@ -80,7 +82,7 @@ Data sources and setup details can change with vendor software and account plans
 
 ## Privacy and data handling
 
-Hotch is local-first: its settings, usage history, and session summaries are stored on your Mac. To provide live readings, it makes account or billing requests to the configured provider, and launches the installed Claude Code or Codex client where required. Those vendors receive the requests they need to answer. Hotch does not submit prompts for model inference.
+Hotch is local-first: its settings, usage history, and session summaries are stored on your Mac. To provide live readings, it makes account or billing requests to the configured provider, and launches the installed Claude Code or Codex client where required. Those vendors receive the requests they need to answer. Hotch does not submit prompts for model inference. On macOS it also asks `hotch.hotherside.com` once a day whether a newer Hotch exists; that request names only the Hotch and Sparkle versions, and you can turn it off in Settings → App updates. An update itself is downloaded from GitHub only when you choose Install or turn on automatic installs. See [Software updates](SHARING.md#software-updates-macos).
 
 The experimental Linux port also asks GitHub's public releases API once a day whether a newer Linux release exists, sending only its version in the User-Agent. It never downloads or installs anything. Turn the check off in its Settings or with `hotch settings set updateChecks false`.
 

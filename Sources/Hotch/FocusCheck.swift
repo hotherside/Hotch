@@ -386,6 +386,59 @@ enum FocusCheck {
                   "\(reloaded.todayEntries.count) entries")
         }
 
+        print("an update relaunch carries the running timer across")
+        do {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("hotch-check-focus-handoff.json")
+            try? FileManager.default.removeItem(at: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let today = Date()
+            let quitAt = today.addingTimeInterval(-60)
+            let first = FocusStore(file: .scratch(url), now: quitAt)
+            first.draftTitle = "Shipping while updating"
+            first.start(minutes: 25, now: quitAt.addingTimeInterval(-10 * 60))
+            let id = first.run?.entryID
+            first.handOffForRelaunch(now: quitAt)
+
+            // Sparkle relaunches a few seconds later.
+            let back = quitAt.addingTimeInterval(8)
+            let second = FocusStore(file: .scratch(url), now: back)
+            check("the run is still running", second.isRunning)
+            check("as the same line", second.run?.entryID == id && second.todayEntries.count == 1)
+            check("with its target", second.targetDuration == 25 * 60)
+            check("and the install time counted",
+                  second.elapsed(now: back).map { abs($0 - (10 * 60 + 8)) < 0.001 } ?? false,
+                  "\(second.elapsed(now: back) ?? -1)")
+            check("the live line says so", second.todayEntries.first?.isRunning == true)
+
+            // The next write drops the hand-off: a later crash is a crash.
+            second.tick(now: back.addingTimeInterval(1))
+            let third = FocusStore(file: .scratch(url), now: back.addingTimeInterval(2))
+            check("a hand-off is honoured once", !third.isRunning)
+
+            // Paused at the hand-off: still paused, nothing banked meanwhile.
+            let paused = FocusStore(file: .scratch(url), now: quitAt)
+            paused.inject(state: .idle, entries: [])
+            paused.start(minutes: nil, now: quitAt.addingTimeInterval(-300))
+            paused.pause(now: quitAt.addingTimeInterval(-100))
+            paused.handOffForRelaunch(now: quitAt)
+            let resumed = FocusStore(file: .scratch(url), now: back)
+            check("a paused run comes back paused", resumed.isRunning && resumed.isPaused)
+            check("without the gap", resumed.elapsed(now: back) == 200,
+                  "\(resumed.elapsed(now: back) ?? -1)")
+
+            // Relaunched by hand much later: an ordinary interrupted run.
+            let late = FocusStore(file: .scratch(url), now: quitAt)
+            late.inject(state: .idle, entries: [])
+            late.start(minutes: 25, now: quitAt.addingTimeInterval(-60))
+            late.handOffForRelaunch(now: quitAt)
+            let stale = FocusStore(file: .scratch(url),
+                                   now: quitAt.addingTimeInterval(FocusStore.relaunchHandoffWindow + 1))
+            check("a stale hand-off comes back finished",
+                  !stale.isRunning && stale.todayEntries.first?.isRunning == false)
+        }
+
         print("the length is remembered, never chosen for you")
         do {
             let focus = FocusStore(persists: false)
