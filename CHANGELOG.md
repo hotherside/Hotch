@@ -11,7 +11,7 @@ Notable user-facing changes are recorded here.
 - macOS: the update check sends only the Hotch and Sparkle versions to hotch.hotherside.com and can be turned off. Sparkle's anonymous system profile is off. Sparkle is Hotch's first third-party package.
 - Linux: say when a newer Linux release is out, checking GitHub at most once a day and on demand (`hotch update-check`). A quiet line in the GNOME card footer and a tray menu item link to the release page, with **Skip this version**; Hotch never downloads or installs updates. Turn it off in Settings or with `hotch settings set updateChecks false`. Releases that change only macOS no longer attach Linux packages, so Linux users hear only about releases that change Linux.
 - Linux: **Check now** in Settings says when it could not check (offline, rate-limited, or no package for this machine). `hotch settings set updateSkipped` accepts `v2.4.0` as well as `2.4.0`.
-- For the 2.4.0 release notes: Hotch 2.2.0 and 2.3.0 cannot update themselves. Download 2.4.0 from the release page once; later versions arrive in the app.
+- macOS: if you have Hotch 2.2.0 or 2.3.0, download this version from the release page once, as those versions cannot update themselves. Later versions arrive in the app.
 
 ## 2.3.0
 

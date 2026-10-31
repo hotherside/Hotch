@@ -12,6 +12,9 @@ node_modules/
 *.p12
 *.p8
 *.mobileprovision
+# A Sparkle private key exported for backup. It belongs in a password
+# manager, never here; see RELEASING.md.
+*sparkle*key*
 *.log
 out.png
 PROJECT.md

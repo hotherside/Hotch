@@ -341,7 +341,7 @@ enum FocusCheck {
 
             // Today, because the log is one day deep and a fixed epoch date is
             // not today.
-            let today = Date()
+            let today = scenarioNow()
             let first = FocusStore(file: .scratch(url))
             first.draftTitle = "Interrupted by a kernel panic"
             first.start(minutes: 60, now: today.addingTimeInterval(-20 * 60))
@@ -393,7 +393,7 @@ enum FocusCheck {
             try? FileManager.default.removeItem(at: url)
             defer { try? FileManager.default.removeItem(at: url) }
 
-            let today = Date()
+            let today = scenarioNow()
             let quitAt = today.addingTimeInterval(-60)
             let first = FocusStore(file: .scratch(url), now: quitAt)
             first.draftTitle = "Shipping while updating"
@@ -437,6 +437,31 @@ enum FocusCheck {
                                    now: quitAt.addingTimeInterval(FocusStore.relaunchHandoffWindow + 1))
             check("a stale hand-off comes back finished",
                   !stale.isRunning && stale.todayEntries.first?.isRunning == false)
+
+            // Across midnight: the log keeps only today, but a run handed off
+            // at 23:59 is still the run in progress at 00:00.
+            let midnight = Calendar.current.startOfDay(for: today)
+            let evening = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(-60))
+            evening.inject(state: .idle, entries: [])
+            evening.start(minutes: 60, now: midnight.addingTimeInterval(-30 * 60))
+            let lateID = evening.run?.entryID
+            evening.handOffForRelaunch(now: midnight.addingTimeInterval(-3))
+            let morning = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(5))
+            check("a run handed off before midnight is still running after it", morning.isRunning)
+            check("as the same line", morning.run?.entryID == lateID && morning.todayEntries.count == 1)
+            check("with the restart counted",
+                  morning.elapsed(now: midnight.addingTimeInterval(5)).map { abs($0 - (30 * 60 + 5)) < 0.001 } ?? false,
+                  "\(morning.elapsed(now: midnight.addingTimeInterval(5)) ?? -1)")
+
+            // A crash is not a hand-off: yesterday's line stays yesterday's.
+            let crashed = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(-60))
+            crashed.inject(state: .idle, entries: [])
+            crashed.start(minutes: 60, now: midnight.addingTimeInterval(-30 * 60))
+            crashed.tick(now: midnight.addingTimeInterval(-3))
+            let after = FocusStore(file: .scratch(url), now: midnight.addingTimeInterval(5))
+            check("a run that crashed before midnight is left in yesterday",
+                  !after.isRunning && after.todayEntries.isEmpty,
+                  "\(after.todayEntries.count) entries")
         }
 
         print("the length is remembered, never chosen for you")
@@ -605,5 +630,15 @@ enum FocusCheck {
         print(failures == 0 ? "\nfocus: all checks passed"
                             : "\nfocus: \(failures) check(s) failed")
         exit(failures == 0 ? 0 : 1)
+    }
+
+    /// "Now" for the scenarios that write a scratch log and read it back. The
+    /// log keeps only lines that started today by the real clock, and those
+    /// scenarios start up to twenty minutes back, so run just after midnight
+    /// (CI's clock is UTC) they started yesterday and vanished on load. Before
+    /// one in the morning they play out at one instead.
+    private static func scenarioNow() -> Date {
+        let now = Date()
+        return max(now, Calendar.current.startOfDay(for: now).addingTimeInterval(60 * 60))
     }
 }
