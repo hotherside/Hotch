@@ -3,6 +3,26 @@
     <channel>
         <title>Hotch</title>
         <item>
+            <title>2.5.0</title>
+            <pubDate>Sat, 31 Oct 2026 14:50:06 +1100</pubDate>
+            <link>https://github.com/hotherside/Hotch/releases/latest</link>
+            <sparkle:version>2.5.0</sparkle:version>
+            <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[- macOS: four tabs instead of six, shown as symbols beside the page's name. **Hotch** is home: usage, CPU, memory and thermals, a one-click Focus start and the last two clipboard items. **AI** puts each provider's plan windows above the sessions running on it. **Mac** is unchanged. **Desk** holds Focus, the clipboard and Backpack mode.
+- macOS: a Claude Code session shows the step it is on and how long that step has run, and a session waiting on you shows the command it wants approved. Codex sessions keep their project line.
+- macOS: an alert on the screen-edge tab is now a label beside the tab instead of a bar growing out of it, and the sessions ring turns amber while a session waits on you.
+- macOS: the screen-edge tab is one control. Hovering tints the whole tab and opens the card; a click keeps it open, also when it opened on hover, and a second click closes it without the hover reopening it. Its readouts no longer highlight or switch pages one by one, since the card's tabs do that.
+- macOS: the edge tab shows a usage ring for each AI provider, so Claude and Codex both appear, and Settings → Where Hotch lives chooses its readouts: Claude, Codex, Sessions, Memory and CPU, one slot each, and whether a running Focus timer takes the last slot.
+- macOS: switching tabs swaps the page in one frame while the card's height eases to fit. The page no longer blanks or cross-fades, the card no longer drops off its anchor when it grows, and clicking tabs quickly can no longer cut off the bottom of the card.
+- macOS: an available update is a green button at the bottom left of every tab.
+- macOS: Backpack mode lives on the Desk tab; the footer shows it only while it is on.
+- macOS: amber and clay status words are darker in light mode, so small text clears 4.5:1 contrast.
+
+]]></description>
+            <enclosure url="https://github.com/hotherside/Hotch/releases/download/v2.5.0/Hotch-2.5.0-update.zip" length="6505917" type="application/octet-stream" sparkle:edSignature="P/OvncygaPKag+Yzof4JPaMeww5mIq70/kkSbQdcMAco23R7qyPCDy1/jG+e6/GwIBEjiYnLIXRPSjA+2fGBDg=="/>
+        </item>
+        <item>
             <title>2.4.0</title>
             <pubDate>Sat, 31 Oct 2026 11:25:27 +1100</pubDate>
             <link>https://github.com/hotherside/Hotch/releases/latest</link>
