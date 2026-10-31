@@ -1,6 +1,6 @@
 # Privacy and data handling
 
-Hotch runs on your Mac. Settings and usage history are stored locally. A live usage or balance reading requires a request to the relevant provider; requests are for account metering or billing and do not ask a model to generate a response. Provider terms and privacy policies apply to those requests.
+Hotch runs on your Mac. Settings and usage history are stored locally. A live usage or balance reading requires a request to the relevant provider; requests are for account metering or billing and do not ask a model to generate a response. Provider terms and privacy policies apply to those requests. On macOS, the only other request is the daily update check described under [Software updates](#software-updates-macos).
 
 ## Local sources Hotch reads
 
@@ -15,6 +15,18 @@ Hotch runs on your Mac. Settings and usage history are stored locally. A live us
 Each person connects their own provider accounts after installing Hotch. The app bundle contains code, its icon, metadata, and the optional helper; it does not include the maintainer's provider accounts or Apple sign-in password.
 
 Signing and notarization happen on the maintainer's Mac. The release tool references a named `notarytool` Keychain profile. The profile and its app-specific password are not copied into the app or disk image. A Developer ID certificate's public identity and Apple team identifier are visible signature metadata and do not allow a recipient to sign code as the maintainer. Someone building a fork must supply their own signing credentials and update the helper's team requirement.
+
+Updates are signed a second time with the maintainer's Sparkle EdDSA key, whose private half stays in the maintainer's Keychain. The app carries only the public half (`SUPublicEDKey`), which can check a signature but not make one. A fork that ships its own updates needs its own key and feed address.
+
+## Software updates (macOS)
+
+From 2.4.0, the macOS app uses [Sparkle](https://sparkle-project.org) to keep itself up to date.
+
+- **The check:** once a day, Hotch requests `https://hotch.hotherside.com/appcast.xml`, a public list of releases served by GitHub Pages. The request is a plain HTTPS `GET` with no query string; its `User-Agent` names only the Hotch and Sparkle versions (for example `Hotch/2.4.0 Sparkle/2.10.1`). Sparkle's anonymous system profile (model, macOS version, CPU and similar) is switched off and is never sent. As with any web request, GitHub, which serves the list, can see your IP address.
+- **The download:** an update is fetched from the project's GitHub releases only after you choose Install, or automatically if you turned on automatic installs. Release notes are part of the list itself, so reading them needs no further request.
+- **Verification:** before installing, Sparkle checks the update's EdDSA signature against the key built into Hotch and that the new app's Apple code signature is intact. An update that fails is refused. Releases are also signed with the maintainer's Developer ID and notarised by Apple, like the disk image.
+- **Your choice:** by default Hotch asks first, showing the release notes with Install, Remind Me Later and Skip This Version. **Settings → App updates** has *Download and install updates automatically* (off by default; it installs only when the card is closed and no Focus timer or Backpack session is running, or else when you quit) and *Check for updates automatically*. Turning off the second stops the daily request entirely; **Check for Updates…** in Settings or the Hotch menu still checks on demand.
+- **What stays:** an update replaces the app in place, so settings, focus history and provider keys are untouched. A Focus timer running during an update carries on in the new version. Installing during a Backpack session ends it, as quitting does, and normal sleep is restored.
 
 ## Clipboard history
 

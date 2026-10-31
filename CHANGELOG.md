@@ -4,7 +4,13 @@ Notable user-facing changes are recorded here.
 
 ## Unreleased
 
+- macOS: Hotch now keeps itself up to date with Sparkle. Once a day it checks for a new version and shows the release notes with Install, Remind Me Later and Skip This Version. Check for Updates… is in Settings → App updates and the Hotch menu.
+- macOS: an update window never appears over the welcome or during a Focus run. A line in the card says an update is available and brings the window back.
+- macOS: Download and install updates automatically is an opt-in in Settings. It waits until the card is closed and no Focus timer or Backpack session is running, or until you quit.
+- macOS: a Focus timer running when an update installs carries on in the new version.
+- macOS: the update check sends only the Hotch and Sparkle versions to hotch.hotherside.com and can be turned off. Sparkle's anonymous system profile is off. Sparkle is Hotch's first third-party package.
 - Linux: say when a newer Linux release is out, checking GitHub at most once a day and on demand (`hotch update-check`). A quiet line in the GNOME card footer and a tray menu item link to the release page, with **Skip this version**; Hotch never downloads or installs updates. Turn it off in Settings or with `hotch settings set updateChecks false`. Releases that change only macOS no longer attach Linux packages, so Linux users hear only about releases that change Linux.
+- For the 2.4.0 release notes: Hotch 2.2.0 and 2.3.0 cannot update themselves. Download 2.4.0 from the release page once; later versions arrive in the app.
 
 ## 2.3.0
 

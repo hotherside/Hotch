@@ -18,6 +18,8 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     var onPlacementChange: () -> Void = {}
     /// Finished. Passes where the window was, for the signal to leave from.
     var onFinish: (CGRect) -> Void = { _ in }
+    /// On screen, for the updater: no scheduled update window over a greeting.
+    var isOpen: Bool { window?.isVisible == true }
 
     init(settings: AppSettings) {
         self.settings = settings

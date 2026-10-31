@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindowController: OnboardingWindowController!
     private let spotlight = OnboardingSpotlight()
     private var placementPulse: DispatchWorkItem?
+    /// Set when Sparkle is about to quit and relaunch a new version, so the
+    /// running Focus timer is handed over rather than finished.
+    private var relaunchingForUpdate = false
     private var storeObservation: Timer?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -300,6 +303,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.requestRefresh()
 
+        // Updates read the app's state when Sparkle asks, so a scheduled
+        // window never lands on the welcome or a Focus run, and a downloaded
+        // update relaunches only when nothing is open or running.
+        let updates = AppUpdater.shared
+        updates.moment = { [weak self] in
+            guard let self else { return UpdatePolicy.Moment() }
+            return UpdatePolicy.Moment(
+                welcomeOpen: self.onboardingWindowController.isOpen,
+                settingsOpen: self.settingsWindowController.isOpen,
+                cardOpen: self.anchors.isShown || self.statusItemController.popoverWindow != nil,
+                focusRunning: self.focusStore.isRunning,
+                backpackActive: self.backpack.isOn)
+        }
+        updates.onWillRelaunch = { [weak self] in self?.relaunchingForUpdate = true }
+        updates.start()
+
         // Completed upgrades stay quiet. A fresh install, or an introduction
         // closed before finishing, gets the native welcome instead of Settings
         // and a competing automatic panel reveal.
@@ -503,7 +522,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clipboardStore?.stop()
         // A timer running at quit logs whatever it banked rather than
         // evaporating: quitting the meter should not erase the metered time.
-        focusStore?.stop()
+        // An update relaunch is not the user quitting, so the run carries on
+        // in the new version instead.
+        if relaunchingForUpdate {
+            focusStore?.handOffForRelaunch()
+        } else {
+            focusStore?.stop()
+        }
         storeObservation?.invalidate()
     }
 }

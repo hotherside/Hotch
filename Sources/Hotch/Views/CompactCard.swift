@@ -40,6 +40,7 @@ struct CompactCard: View {
     @ObservedObject var pages: PopoverPageModel
     @ObservedObject var system: SystemMonitor
     @ObservedObject var backpack: BackpackManager
+    @ObservedObject private var updates = AppUpdater.shared
     let now: Date
     var history: UsageHistoryStore = .shared
     /// Expanded cards keep all six destinations inside the content surface.
@@ -154,10 +155,17 @@ struct CompactCard: View {
 
     private var footer: some View {
         HStack(spacing: 2) {
-            Text(footerText)
-                .font(.system(size: CT.caption))
-                .foregroundStyle(HP.text3)
-                .lineLimit(1)
+            // A found update takes the status line until it is dealt with,
+            // except on the Backpack card, whose line says whether the Mac
+            // will sleep.
+            if let offer = updates.offer, !pages.backpackCard {
+                UpdateFooterLine(offer: offer, fontSize: CT.caption) { updates.checkForUpdates() }
+            } else {
+                Text(footerText)
+                    .font(.system(size: CT.caption))
+                    .foregroundStyle(HP.text3)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 6)
             BackpackShortcut(backpack: backpack, selected: pages.backpackCard, action: nav.openBackpack)
             if showsAppButtons {

@@ -72,6 +72,9 @@ if npArguments.contains("--check-notch") {
 if npArguments.contains("--check-credentials") {
     CredentialStoreCheck.runBlockingAndExit()
 }
+if npArguments.contains("--check-updates") {
+    MainActor.assumeIsolated { UpdateCheck.runBlockingAndExit() }
+}
 if npArguments.contains("--render-icon") {
     IconCLI.runBlockingAndExit(
         directory: npValue(after: "--render-icon", default: "build/AppIcon.iconset")
