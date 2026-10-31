@@ -119,6 +119,11 @@ final class AppSettings: ObservableObject {
     /// without touching the user's stored preference. Nil in normal operation.
     nonisolated(unsafe) static var displayModeOverride: UsageDisplayMode?
 
+    /// A render-time override of which providers count as switched on, so a
+    /// film of the demo fixture shows its providers whatever this binary's
+    /// own settings hold. Nil in normal operation.
+    nonisolated(unsafe) static var enabledProvidersOverride: Set<String>?
+
     /// Whether the clipboard page records anything at all. The store keeps its
     /// short history in memory only and honours the concealed-type marks, but
     /// a clipboard watcher is still the most privacy-shaped thing in the app,
@@ -321,7 +326,7 @@ final class AppSettings: ObservableObject {
     }
 
     func isEnabled(_ providerID: String) -> Bool {
-        enabledProviderIDs.contains(providerID)
+        (AppSettings.enabledProvidersOverride ?? enabledProviderIDs).contains(providerID)
     }
 
     func setEnabled(_ enabled: Bool, providerID: String) {

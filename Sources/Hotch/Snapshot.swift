@@ -594,6 +594,10 @@ enum Snapshot {
         let focus = FocusStore(persists: false)
         seedDemoFocus(into: focus)
         applyDemoFixture(store: store, sessions: sessions, clipboard: clipboard, focus: focus, system: system)
+        // The Desk tab before a run starts, for the Focus setup screenshot.
+        let idleFocus = FocusStore(persists: false)
+        seedDemoFocus(into: idleFocus, idle: true)
+        let runningFocus = focus
         let alert = LiveActivity(icon: .brand("codex"), leading: "Refactor upload…", trailing: "needs approval",
                                  tint: .white, trailingTint: HP.amber, dot: true, key: "need-demo")
 
@@ -623,8 +627,9 @@ enum Snapshot {
             return FloatView(state: state, store: store, sessionStore: sessions, system: system, focus: focus,
                              onSize: { _ in }, onDrag: { _ in }, onTap: {})
         }
-        func card(_ page: PanelPage, menuBar: Bool = false, offer: AppUpdater.Offer? = nil) -> some View {
-            CompactCard(store: store, sessionStore: sessions, clipboard: clipboard, focus: focus,
+        func card(_ page: PanelPage, menuBar: Bool = false, offer: AppUpdater.Offer? = nil,
+                  focus: FocusStore? = nil) -> some View {
+            CompactCard(store: store, sessionStore: sessions, clipboard: clipboard, focus: focus ?? runningFocus,
                         pages: pages(page), system: system, backpack: BackpackManager.shared, now: Date(),
                         history: history, showsTabs: true, showsAppButtons: menuBar, scrollable: false,
                         renderedOffer: offer)
@@ -674,7 +679,10 @@ enum Snapshot {
             write("rail-\(name)", rail(.expanded, page: page).frame(width: RailController.columnSize.width, height: RailController.columnSize.height))
         }
         write("menubar-card", card(.home, menuBar: true))
-        write("card-update", card(.home, offer: .available(version: "2.5.0")))
+        write("card-desk-idle", card(.desk, focus: idleFocus))
+        write("card-update", card(.home, offer: .available(version: "2.5.1")))
+        write("menubar-card-update", card(.home, menuBar: true, offer: .available(version: "2.5.1")))
+        write("menubar-card-restart", card(.home, menuBar: true, offer: .ready(version: "2.5.1")))
         write("bottom", rail(.collapsed, side: .bottom).frame(width: RailController.barSize.width, height: RailController.barSize.height))
         write("bottom-open", rail(.expanded, side: .bottom).frame(width: RailController.barOpenSize.width, height: RailController.barOpenSize.height))
         write("bottom-alert", VStack(spacing: 6) {
