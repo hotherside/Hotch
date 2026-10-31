@@ -17,8 +17,9 @@ function shell() {
     class Actor extends Signals {
         constructor(...args) { super(); this._init(...args); }
         _init(props = {}) {
-            this.children = []; this.classes = new Set(); this.x = 0; this.y = 0;
+            this.children = []; this.classes = new Set(); this.x = 0; this.y = 0; this.layout_manager = {};
             this.clutter_text = new Signals(); Object.assign(this, props);
+            if (props.child) this.set_child(props.child);
         }
         add_child(child) { assert.equal(this.dead, undefined, 'actor already destroyed'); child.parent?.remove_child(child); this.children.push(child); child.parent = this; }
         remove_child(child) { this.children = this.children.filter(c => c !== child); child.parent = null; }
@@ -29,8 +30,8 @@ function shell() {
         set_child(child) { this.remove_all_children(); this.add_child(child); }
         add_style_class_name(name) { this.classes.add(name); }
         remove_style_class_name(name) { this.classes.delete(name); }
-        add_style_pseudo_class() {}
-        remove_style_pseudo_class() {}
+        add_style_pseudo_class(name) { this.pseudo = name; }
+        remove_style_pseudo_class() { this.pseudo = null; }
         queue_repaint() {}
         hide() { this.visible = false; }
         get_preferred_width() { return [120, 120]; }
@@ -82,7 +83,8 @@ function shell() {
             find_program_in_path: () => '/fixture/hotch-bin', file_test: () => true, FileTest: {IS_EXECUTABLE: 1},
             timeout_add_seconds(_p, _s, f) { timers.set(++timerId, f); return timerId; },
             timeout_add(_p, _s, f) { timers.set(++timerId, f); return timerId; },
-            source_remove(id) { timers.delete(id); }},
+            source_remove(id) { timers.delete(id); },
+            DateTime: {new_from_unix_local: () => ({format: () => 'Saturday 31 October'})}},
         Gio: {Settings: class extends Signals { get_string() { return 'prefer-dark'; } },
             Cancellable: class { cancel() { this.cancelled = true; } is_cancelled() { return !!this.cancelled; } },
             File: {new_for_path: () => file}, FileMonitorFlags: {}, FileCreateFlags: {}, FileQueryInfoFlags: {},
@@ -119,7 +121,7 @@ test('all pages and placements preserve the shared card and clean up resources',
         const menu = e.pill?.menu ?? e._indicator.menu;
         menu.open();
         assert.equal(card.dead, undefined, `${home} disposed the shared card`);
-        for (const tab of ['now', 'ai', 'sessions', 'system', 'focus', 'clipboard', 'settings']) {
+        for (const tab of ['home', 'ai', 'computer', 'desk', 'settings']) {
             e._indicator._show(tab);
             assert.ok(e._indicator._page.children.length);
         }
@@ -169,7 +171,7 @@ test('Focus completion notifies once and stops its one-second source', () => {
 test('background provider refresh preserves Focus input widgets', () => {
     const {extension: e} = shell();
     e.enable();
-    e._indicator._show('focus');
+    e._indicator._show('desk');
     const widgets = [...e._indicator._page.children];
     e._indicator._apply({usage: [], sessions: [], system: {}});
     assert.deepEqual(e._indicator._page.children, widgets);
@@ -242,5 +244,132 @@ test('update notice opens the release page, skips a version and stays off when d
     unsupported.output = JSON.stringify({update: {}, answered: false, supported: false});
     unsupported.callback(unsupported, null);
     assert.ok(texts(indicator._page).includes('Update checks cover the amd64 and arm64 Linux packages only'));
+    e.disable();
+});
+
+const all = actor => [actor, ...actor.children.flatMap(all)];
+const taskField = page => all(page).find(a => a.hint_text === 'What are you working on?');
+
+test('four tabs reach every old section: home, AI with nested sessions, Computer and Desk', () => {
+    const {extension: e} = shell();
+    e.enable();
+    const indicator = e._indicator;
+    e.updateSettings({clipboardEnabled: true});
+    e.clipboardItems = ['first copy', 'second copy', 'third copy'];
+    const sessions = [
+        {provider: 'claude', activity: 'needs input', name: 'Fixture', project: 'hotch', waitingFor: 'Approve Bash', lastEventAt: 1000},
+        {provider: 'codex', activity: 'working', name: 'Codex run', project: 'web', lastEventAt: 990},
+    ];
+    indicator._apply({
+        usage: [{provider: 'claude', windows: [{label: 'Session', percent: 42, resetsAt: 1000 + 7200}], extras: [], plan: 'Max', fetchedAt: 1000}],
+        sessions, system: {cpuPercent: 25, memUsedGB: 8, memTotalGB: 16, battery: {percent: 15, status: 'Discharging'}},
+    });
+
+    // Home: the waiting session first, then usage, the computer and the desk.
+    assert.equal(indicator._tab, 'home');
+    assert.equal(indicator._titleLabel.text, 'Hotch');
+    assert.equal(indicator._captionLabel.text, 'Saturday 31 October');
+    assert.equal(texts(indicator._page.children[0])[0], 'Needs you');
+    const home = texts(indicator._page);
+    for (const text of ['· Fixture', 'Approve Bash', 'AI USAGE', '2 sessions', 'Claude', '42% used', 'Session · 2h 0m',
+        'THIS COMPUTER', 'CPU', '25%', 'Memory', '50%', 'Battery', '15%', 'DESK', 'Focus', '15m', '25m', '50m',
+        'Stopwatch', 'first copy', 'second copy'])
+        assert.ok(home.includes(text), text);
+    assert.ok(!home.includes('third copy'), 'home shows only the last two copies');
+
+    // AI: each provider's windows with its own sessions beneath, Codex
+    // included without a usage reading.
+    indicator._show('ai');
+    assert.equal(indicator._captionLabel.text, '1 needs input · 1 working');
+    assert.ok(indicator._captionLabel.classes.has('hotch-heading-alert'));
+    const [claude, codex] = indicator._page.children;
+    for (const text of ['Max plan', 'Session', '42% used', 'Fixture', 'Approve Bash', 'needs you'])
+        assert.ok(texts(claude).includes(text), text);
+    assert.ok(texts(codex).includes('Codex run'));
+    assert.ok(!texts(claude).includes('Codex run'));
+
+    indicator._show('computer');
+    assert.equal(indicator._titleLabel.text, 'Computer');
+    assert.equal(indicator._captionLabel.text, 'Battery is low');
+    assert.ok(texts(indicator._page).includes('8.0 of 16 GB'));
+
+    indicator._show('desk');
+    assert.equal(indicator._captionLabel.text, 'Focus and clipboard');
+    assert.ok(!indicator._captionLabel.classes.has('hotch-heading-alert'));
+    const desk = texts(indicator._page);
+    for (const text of ['FOCUS', '25:00', 'CLIPBOARD', 'first copy', 'third copy', 'Clear history'])
+        assert.ok(desk.includes(text), text);
+
+    // The footer's gear opens Settings with no tab selected.
+    indicator._show('settings');
+    assert.equal(indicator._titleLabel.text, 'Settings');
+    assert.ok(Object.values(indicator._tabButtons).every(button => !button.pseudo));
+
+    // Nothing waiting: no needs-you line.
+    indicator._show('home');
+    indicator._apply({usage: [], sessions: [sessions[1]], system: {}});
+    assert.ok(!texts(indicator._page).includes('Needs you'));
+    assert.ok(texts(indicator._page).includes('1 session'));
+    e.disable();
+});
+
+test('home starts Focus in one click and its clock ticks without a redraw', () => {
+    const {extension: e, timers, advance} = shell();
+    e.enable();
+    const indicator = e._indicator;
+    all(indicator._page).find(a => a.label === '25m').emit('clicked');
+    assert.deepEqual([e.settings.focus.mode, e.settings.focus.duration, e.settings.focus.startedAt], ['timer', 1500, 1000]);
+    const clock = indicator._homeClock;
+    assert.equal(clock.text, '25:00');
+    assert.ok(texts(indicator._page).includes('left'));
+    assert.ok(!all(indicator._page).some(a => a.label === '25m'), 'chips give way to the running clock');
+    advance(60);
+    timers.get(e._focusTimer)();
+    assert.equal(indicator._homeClock, clock);
+    assert.equal(clock.text, '24:00');
+
+    indicator._show('desk');
+    assert.equal(indicator._captionLabel.text, 'Focus · 24:00 left');
+    advance(1);
+    timers.get(e._focusTimer)();
+    assert.equal(indicator._captionLabel.text, 'Focus · 23:59 left');
+
+    e.updateSettings({focus: {...e.settings.focus, startedAt: null, elapsed: 0}});
+    indicator._show('home');
+    all(indicator._page).find(a => a.label === 'Stopwatch').emit('clicked');
+    assert.equal(e.settings.focus.mode, 'stopwatch');
+    assert.equal(indicator._homeClock.text, '00:00');
+    assert.ok(texts(indicator._page).includes('elapsed'));
+    e.disable();
+    assert.equal(timers.size, 0);
+});
+
+test('Desk redraws only its clipboard rows for a copy, and keeps a typed task name', () => {
+    const {extension: e, selection, clipboard: c, clipboardCallbacks: pending} = shell();
+    e.enable();
+    const indicator = e._indicator;
+    indicator._show('desk');
+    taskField(indicator._page).text = 'Draft plan';
+
+    // Switching clipboard history on redraws Desk; the typed name survives.
+    all(indicator._page).find(a => a.label === 'Enable clipboard history').emit('clicked');
+    const field = taskField(indicator._page);
+    assert.equal(field.get_text(), 'Draft plan');
+
+    // A copy and a cleared history rebuild only the clipboard rows.
+    c.text = 'copied text';
+    selection.emit('owner-changed', 1);
+    pending.shift()();
+    assert.ok(all(indicator._page).includes(field));
+    assert.ok(texts(indicator._page).includes('copied text'));
+    all(indicator._page).find(a => a.label === 'Clear history').emit('clicked');
+    assert.ok(all(indicator._page).includes(field));
+    assert.equal(field.dead, undefined);
+    assert.ok(!texts(indicator._page).includes('copied text'));
+
+    // Opening another tab drops the unsaved name.
+    indicator._show('home');
+    indicator._show('desk');
+    assert.equal(taskField(indicator._page).get_text(), '');
     e.disable();
 });
