@@ -55,6 +55,18 @@ if npArguments.contains("--check-rail") {
 if npArguments.contains("--check-session-handoff") {
     SessionHandoffCheck.runBlockingAndExit()
 }
+if npArguments.contains("--check-session-steps") {
+    SessionStepCheck.runBlockingAndExit()
+}
+if npArguments.contains("--check-card-motion") {
+    MainActor.assumeIsolated {
+        CardMotionCheck.runBlockingAndExit(
+            directory: npArguments.firstIndex(of: "--check-card-motion").flatMap { index in
+                let next = npArguments.index(after: index)
+                return next < npArguments.endIndex && !npArguments[next].hasPrefix("--") ? npArguments[next] : nil
+            })
+    }
+}
 if npArguments.contains("--check-welcome") {
     MainActor.assumeIsolated { OnboardingCheck.runBlockingAndExit() }
 }
@@ -113,11 +125,11 @@ if npArguments.contains("--snapshot-statusbar") {
 // snapshot modes below; the default is the home page, so existing invocations
 // keep producing exactly what they always did.
 let npSnapshotPage: PanelPage = {
-    guard npArguments.contains("--snapshot-page") else { return .now }
-    let raw = npValue(after: "--snapshot-page", default: "now")
+    guard npArguments.contains("--snapshot-page") else { return .home }
+    let raw = npValue(after: "--snapshot-page", default: "home")
     guard let page = PanelPage(argument: raw) else {
         FileHandle.standardError.write(
-            Data("--snapshot-page must be now, ai, agents, mac, focus or clipboard\n".utf8))
+            Data("--snapshot-page must be home, ai, mac or desk\n".utf8))
         exit(2)
     }
     return page

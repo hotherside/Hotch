@@ -310,6 +310,24 @@ final class NotchPanel: NSPanel {
 
     override var canBecomeKey: Bool { keyable }
     override var canBecomeMain: Bool { false }
+
+    /// Set only by `--check-card-motion`: every panel is laid out and drawn
+    /// as usual but can be neither seen nor clicked, so the check runs the
+    /// real windows without covering what is on the person's screen. The
+    /// anchors that fade their window skip it while this is set. (Not an
+    /// override of `alphaValue`: Swift calls a final class's override
+    /// directly, so `animator().alphaValue` ran it on AppKit's animation
+    /// proxy and crashed.)
+    nonisolated(unsafe) static var unseen = false
+
+    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask,
+                  backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        if Self.unseen {
+            alphaValue = 0
+            ignoresMouseEvents = true
+        }
+    }
 }
 
 /// Hosting view for the interaction window. The one AppKit override that makes
@@ -499,7 +517,7 @@ final class NotchWindowController {
         focusBadge = NotchFocusBadgeController(focus: focus)
         focusBadge.onTap = { [weak self] in
             guard let self else { return }
-            self.setPage(self.focus.isRunning ? .focus : .now)
+            self.setPage(self.focus.isRunning ? .desk : .home)
             self.pinned = true
             self.expand(near: NSEvent.mouseLocation)
         }
@@ -599,7 +617,7 @@ final class NotchWindowController {
 
     func setPage(_ page: PanelPage) {
         guard page != model.page || model.backpackCard || model.macDetail != nil else { return }
-        if model.page == .focus && page != .focus { model.editingTask = false }
+        if model.page == .desk && page != .desk { model.editingTask = false }
         Haptics.tap()
         withAnimation(HMotion.section) {
             model.page = page
@@ -631,7 +649,7 @@ final class NotchWindowController {
     }
 
     private func syncKeyability() {
-        contentPanel.keyable = model.expanded && (pinned || (model.page == .focus && !model.backpackCard))
+        contentPanel.keyable = model.expanded && (pinned || (model.page == .desk && !model.backpackCard))
         if !contentPanel.keyable && contentPanel.isKeyWindow {
             contentPanel.resignKey()
         }
@@ -708,7 +726,7 @@ final class NotchWindowController {
     }
 
     func reveal(pinnedFor pin: TimeInterval) {
-        setPage(.now)
+        setPage(.home)
         expand()
         model.revealHint = (geometry?.isRealNotch ?? false)
             ? "Hotch lives here \u{2014} hover the notch anytime"
@@ -807,8 +825,13 @@ final class NotchWindowController {
 /// A light tick on the trackpad when a section changes, where the hardware
 /// supports it. The same feedback macOS gives when something snaps into place.
 enum Haptics {
+    /// Off while `--check-card-motion` drives the anchors, so a scripted
+    /// pointer never taps the person's trackpad.
+    nonisolated(unsafe) static var muted = false
+
     @MainActor
     static func tap() {
+        guard !muted else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 }

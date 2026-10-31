@@ -1,27 +1,27 @@
 import Foundation
 import CoreGraphics
 
-/// Shared geometry for the three large rail readouts. Coordinates within a
-/// side rail run down from its top; bottom-bar coordinates run from its left.
+/// Shared geometry for the rail's readouts. Coordinates within a side rail
+/// run down from its top; bottom-bar coordinates run from its left.
 enum RailGeometry {
     enum Side: CaseIterable { case left, right, bottom }
     static let width: CGFloat = 46
-    static let height: CGFloat = 224
     static let slot: CGFloat = 44
-    static let count = 3
+    /// How many readouts the tab shows: Settings chooses them, one slot each.
+    /// Written on the main thread when that choice changes, and only then,
+    /// so the tab's size never moves with the data it shows.
+    nonisolated(unsafe) static var count = 3
+    static let maxCount = 5
     static let endInset: CGFloat = 46
     static let bottomInset: CGFloat = 12
-    static let bottomWidth = bottomInset * 2 + slot * CGFloat(count)
+    static var height: CGFloat { endInset * 2 + slot * CGFloat(count) }
+    static var bottomWidth: CGFloat { bottomInset * 2 + slot * CGFloat(count) }
     static let taper: CGFloat = 46
     static let cardGap: CGFloat = 8
     static let screenInset: CGFloat = 6
 
     static func center(_ index: Int, bottom: Bool = false) -> CGFloat {
         (bottom ? bottomInset : endInset) + slot * (CGFloat(index) + 0.5)
-    }
-
-    static func nearestSlot(to position: CGFloat, bottom: Bool = false) -> Int {
-        min(count - 1, max(0, Int(((position - (bottom ? bottomInset : endInset)) / slot).rounded(.down))))
     }
 
     /// Reserve the card's largest supported height once when opening, so all
@@ -80,17 +80,25 @@ enum RailGeometry {
     }
 }
 
-/// A timer takes the third status slot while active, including when paused.
-/// Once the card opens, that mapping stays still beneath the pointer until
-/// closing applies the latest Focus state.
+/// The readouts Settings chose, in order. A running timer's clock takes the
+/// last slot while active, including when paused, so the tab never changes
+/// size for it. Once the card opens the readouts stay still until closing
+/// applies the latest choice and Focus state.
 struct RailSlotPolicy {
-    enum Target: Hashable, CaseIterable, Sendable { case ai, sessions, mac, focus }
-    private(set) var targets: [Target] = [.ai, .sessions, .mac]
+    enum Target: Hashable, Sendable {
+        /// A provider's tightest plan window, around its mark.
+        case provider(String)
+        case sessions, memory, cpu, focus
+    }
+    static let standard: [Target] = [.provider("claude"), .sessions, .memory]
+    private(set) var targets: [Target] = RailSlotPolicy.standard
     private var wasExpanded = false
 
-    mutating func update(focusActive: Bool, expanded: Bool) {
+    mutating func update(chosen: [Target], focusClock: Bool, focusActive: Bool, expanded: Bool) {
         if !expanded || !wasExpanded {
-            targets = [.ai, .sessions, focusActive ? .focus : .mac]
+            var next = Array((chosen.isEmpty ? [.sessions] : chosen).prefix(RailGeometry.maxCount))
+            if focusClock && focusActive { next[next.count - 1] = .focus }
+            targets = next
         }
         wasExpanded = expanded
     }

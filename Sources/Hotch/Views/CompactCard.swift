@@ -17,9 +17,10 @@ enum CardMetrics {
     /// Header, footer, their gaps, and the card’s outer vertical padding.
     static let chromeHeight: CGFloat = headerHeight + 6 + 24 + 6 + 8 + 4
     static let maxHeight: CGFloat = maxSectionHeight + chromeHeight
-    /// The viewport retains outgoing layout until its fade ends; the host
-    /// only needs a rendering turn before applying the resulting smaller size.
-    static var resizeSettle: TimeInterval { HMotion.reduceMotion ? 0 : 0.02 }
+    /// A smaller page eases the card's height down over the section motion,
+    /// so the window waits that long before shrinking to match, or it would
+    /// cut off the bottom of the card on its way down.
+    static var resizeSettle: TimeInterval { HMotion.reduceMotion ? 0 : HMotion.sectionDuration + 0.03 }
 }
 
 /// Type scale for the card.
@@ -53,6 +54,8 @@ struct CompactCard: View {
     var onQuit: () -> Void = {}
     var onSignInClaude: () -> Void = {}
     var onJump: (AgentSession) -> Void = { _ in }
+    /// An update to show regardless of the updater, for renders only.
+    var renderedOffer: AppUpdater.Offer? = nil
 
     @Environment(\.usageDisplayMode) private var mode
     @State private var demandClient = "card-\(UUID().uuidString)"
@@ -92,18 +95,57 @@ struct CompactCard: View {
 
     // MARK: Header
 
+    /// The page's name and one line about it on the left, the four tabs as
+    /// symbols on the right: one row where a labelled tab bar and a title
+    /// would have taken two.
     private var header: some View {
         Group {
             if showsTabs {
-                HotchTabBar(selection: Binding(get: { pages.page }, set: { pages.select($0) }),
-                            dimSelection: pages.backpackCard,
-                            compact: true,
-                            onSelect: { pages.select($0) })
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(pages.backpackCard ? "Backpack" : pages.page.title)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(HP.text)
+                        Text(headerCaption.text)
+                            .font(.system(size: CT.caption))
+                            .foregroundStyle(headerCaption.alert ? HP.amber : HP.text3)
+                    }
+                    .lineLimit(1)
+                    // The words change with the page, in the same frame,
+                    // rather than dissolving after it has already gone.
+                    .contentTransition(.identity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 4)
+                    .accessibilityElement(children: .combine)
+                    HotchTabBar(selection: Binding(get: { pages.page }, set: { pages.select($0) }),
+                                dimSelection: pages.backpackCard,
+                                compact: true,
+                                iconsOnly: true,
+                                onSelect: { pages.select($0) })
+                }
             } else {
                 Kicker(text: pages.backpackCard ? "Backpack" : pages.page.wingTitle)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var headerCaption: (text: String, alert: Bool) {
+        if pages.backpackCard { return ("Keep agents working with the lid closed", false) }
+        switch pages.page {
+        case .home:
+            return (now.formatted(.dateTime.weekday(.wide).day().month(.wide)), false)
+        case .ai:
+            return (sessionStore.summaryLine ?? "No sessions right now", sessionStore.needsInputCount > 0)
+        case .mac:
+            if let warning = system.latest?.warning { return (warning, true) }
+            return (system.latest == nil ? "Waiting for readings" : "Live \u{00B7} every second", false)
+        case .desk:
+            if let readout = FocusDisplay.readout(focus, now: now) {
+                return ("Focus \u{00B7} \(readout.value) \(readout.caption)", false)
+            }
+            return (clipboard.enabled ? "Focus, clipboard and Backpack" : "Focus and Backpack", false)
+        }
     }
 
     // MARK: Sections
@@ -128,24 +170,20 @@ struct CompactCard: View {
                              layout: layout, active: true)
             } else {
                 switch pages.page {
-                case .now:
-                    CompactNow(store: store, sessionStore: sessionStore, system: system,
-                               history: history, now: now, nav: nav, backpack: backpack)
+                case .home:
+                    CompactHome(store: store, sessionStore: sessionStore, system: system, focus: focus,
+                                clipboard: clipboard, history: history, now: now, nav: nav)
                 case .ai:
-                    CompactAI(store: store, history: history, now: now, nav: nav)
-                case .agents:
-                    CompactAgents(sessions: sessionStore.sessions, now: now, onJump: onJump)
+                    CompactAITab(store: store, sessions: sessionStore.sessions, history: history,
+                                 now: now, nav: nav)
                 case .mac:
                     if let detail = pages.macDetail {
                         MacDetailView(system: system, kind: detail, layout: layout, nav: nav)
                     } else {
                         CompactMac(system: system, nav: nav)
                     }
-                case .focus:
-                    PopoverFocusSection(focus: focus, now: now)
-                case .clipboard:
-                    PopoverClipboardSection(items: clipboard.items, enabled: clipboard.enabled, now: now,
-                                            onCopy: { clipboard.copyBack($0) })
+                case .desk:
+                    CompactDesk(focus: focus, clipboard: clipboard, backpack: backpack, now: now, nav: nav)
                 }
             }
         }
@@ -158,16 +196,22 @@ struct CompactCard: View {
             // A found update takes the status line until it is dealt with,
             // except on the Backpack card, whose line says whether the Mac
             // will sleep.
-            if let offer = updates.offer, !pages.backpackCard {
-                UpdateFooterLine(offer: offer, fontSize: CT.caption) { updates.checkForUpdates() }
+            if let offer = renderedOffer ?? updates.offer, !pages.backpackCard {
+                UpdatePill(offer: offer) { updates.checkForUpdates() }
             } else {
                 Text(footerText)
                     .font(.system(size: CT.caption))
                     .foregroundStyle(HP.text3)
                     .lineLimit(1)
+                    .contentTransition(.identity)
             }
             Spacer(minLength: 6)
-            BackpackShortcut(backpack: backpack, selected: pages.backpackCard, action: nav.openBackpack)
+            // Backpack lives on the Desk tab. The footer only carries it while
+            // it is on (a mode that keeps the Mac awake should never be out of
+            // sight) or while its card is open, as the way back.
+            if backpack.isOn || pages.backpackCard {
+                BackpackShortcut(backpack: backpack, selected: pages.backpackCard, action: nav.openBackpack)
+            }
             if showsAppButtons {
                 button("arrow.clockwise", help: "Refresh now", action: onRefresh)
             }
@@ -181,13 +225,11 @@ struct CompactCard: View {
     private var footerText: String {
         if pages.backpackCard { return backpack.footerLine }
         switch pages.page {
-        case .now, .ai:
+        case .home, .ai:
             if store.isRefreshing { return "Checking usage…" }
             return Fmt.ago(store.lastRefresh, now: now).map { "Checked \($0)" } ?? "No usage check yet"
-        case .agents: return sessionStore.summaryLine ?? "from each agent's own records"
-        case .mac: return system.latest == nil ? "Waiting for Mac readings" : "live · every second"
-        case .focus: return ""
-        case .clipboard: return clipboard.enabled ? "memory only" : "clipboard history is off"
+        case .mac: return "Click a tile for detail"
+        case .desk: return clipboard.enabled ? "Click an item to copy it again" : "Clipboard history is off"
         }
     }
 
@@ -204,470 +246,6 @@ struct CompactCard: View {
         .help(help)
         .accessibilityLabel(help)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-// MARK: - Now
-
-struct CompactNow: View {
-    @ObservedObject var store: UsageStore
-    @ObservedObject var sessionStore: SessionStore
-    @ObservedObject var system: SystemMonitor
-    let history: UsageHistoryStore
-    let now: Date
-    let nav: SectionNav
-    @ObservedObject var backpack: BackpackManager = .shared
-
-    private var shown: [ProviderUsage] {
-        store.usages
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            CompactAgentsStrip(sessions: sessionStore.sessions, nav: nav)
-            Kicker(text: "AI capacity").padding(.horizontal, 2)
-            if shown.isEmpty {
-                Button(action: nav.openSettings) {
-                    HStack {
-                        Text("No AI accounts connected yet").font(.system(size: CT.body, weight: .semibold))
-                        Spacer()
-                        Text("Settings").font(.system(size: CT.caption)).foregroundStyle(HP.text3)
-                    }
-                    .padding(.horizontal, 10).frame(height: 40)
-                }
-                .buttonStyle(TileButtonStyle(radius: 12))
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(shown.prefix(4).enumerated()), id: \.element.id) { index, usage in
-                        if index > 0 { Rectangle().fill(HP.stroke).frame(height: 1) }
-                        Button {
-                            if usage.needsSetup { nav.openSettings() } else { nav.go(.ai) }
-                        } label: {
-                            CompactProviderRow(usage: usage, history: history, now: now, nav: nav)
-                        }
-                        .buttonStyle(RowButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 10)
-                .tile(radius: 12)
-            }
-            CompactMacSummary(system: system, nav: nav)
-            BackpackDiscoveryRow(backpack: backpack, action: nav.openBackpack)
-        }
-    }
-}
-
-struct CompactProviderRow: View {
-    let usage: ProviderUsage
-    let history: UsageHistoryStore
-    let now: Date
-    let nav: SectionNav
-
-    @Environment(\.usageDisplayMode) private var mode
-    private var identity: ProviderIdentity { ProviderIdentity.identity(for: usage.providerID) }
-
-    private var tightest: UsageWindow? {
-        usage.windows.max { ($0.consumedPercent ?? -1) < ($1.consumedPercent ?? -1) }
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            ZStack {
-                if let window = tightest {
-                    ForecastRing(share: window.fillShare(mode), isCritical: window.isCritical,
-                                 color: identity.accent, size: 32, lineWidth: 3)
-                } else {
-                    Circle().stroke(HP.track, lineWidth: 3).frame(width: 32, height: 32)
-                }
-                BrandMark(kind: identity.mark, size: 13, tint: identity.accent)
-            }
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
-                    Text(usage.displayName).fontWeight(.semibold).foregroundStyle(HP.text)
-                    Spacer(minLength: 3)
-                    if let window = tightest {
-                        Text(window.percent(mode).map { "\(Fmt.percent($0)) \(mode.unit)" } ?? "No reading")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(window.isCritical ? HP.amber : HP.text)
-                            .monospacedDigit()
-                    } else if let balance = usage.balance {
-                        Text("\(Fmt.money(balance.amount, currency: balance.currency)) left")
-                            .fontWeight(.semibold).foregroundStyle(HP.text)
-                    }
-                }
-                .font(.system(size: CT.body))
-                if let window = tightest {
-                    Text([window.displayName,
-                          Fmt.remaining(to: window.resetsAt, now: now).map { "Resets \($0)" } ?? "Reset time unavailable"]
-                        .joined(separator: " · "))
-                        .font(.system(size: CT.caption)).foregroundStyle(HP.text2)
-                        .lineLimit(1)
-                }
-                if let status = usage.freshnessCaption(now: now) {
-                    Text(status).font(.system(size: CT.caption))
-                        .foregroundStyle(usage.needsSetup || usage.isStale(now: now) ? HP.amber : HP.text2)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-}
-
-struct CompactAgentsStrip: View {
-    let sessions: [AgentSession]
-    let nav: SectionNav
-
-    private var needing: [AgentSession] { sessions.filter { $0.activity == .needsInput } }
-    private var working: Int { sessions.filter { $0.activity == .working || $0.activity == .shell }.count }
-    private var idle: Int { sessions.filter { $0.activity == .waiting }.count }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(needing.prefix(2)) { session in
-                Button { nav.jump(session) } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: "hand.raised.fill").foregroundStyle(HP.amber)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Needs your attention")
-                                .font(.system(size: CT.caption, weight: .semibold)).foregroundStyle(HP.amber)
-                            Text(session.name).font(.system(size: CT.title, weight: .semibold))
-                                .foregroundStyle(HP.text).lineLimit(1)
-                            Text(session.waitingFor.flatMap { $0.isEmpty ? nil : $0 } ?? AgentStatus.word(session))
-                                .font(.system(size: CT.caption)).foregroundStyle(HP.text2).lineLimit(2)
-                        }
-                        Spacer(minLength: 4)
-                        Image(systemName: "arrow.up.forward").foregroundStyle(HP.amber)
-                            .accessibilityHidden(true)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(TileButtonStyle(radius: 12))
-                .help(session.waitingFor ?? "Go to the session")
-                .accessibilityElement(children: .combine)
-                .accessibilityHint("Opens \(session.surface ?? "the session’s app")")
-            }
-            Button { nav.go(.agents) } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "terminal").foregroundStyle(HP.text2).accessibilityHidden(true)
-                    Text(summary).foregroundStyle(HP.text2)
-                    Spacer(minLength: 3)
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(HP.text3).accessibilityHidden(true)
-                }
-                .font(.system(size: CT.body))
-                .padding(.horizontal, 4).frame(minHeight: 28)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(RowButtonStyle())
-            .accessibilityLabel("Sessions: \(summary)")
-        }
-    }
-
-    private var summary: String {
-        let live = sessions.filter { $0.activity != .ended }.count
-        guard live > 0 else { return "No active sessions" }
-        var parts = ["\(working) working"]
-        if !needing.isEmpty { parts.append("\(needing.count) need you") }
-        if idle > 0 { parts.append("\(idle) idle") }
-        return parts.joined(separator: " · ")
-    }
-}
-
-/// One calm entry point into the full Mac metrics page.
-struct CompactMacSummary: View {
-    @ObservedObject var system: SystemMonitor
-    let nav: SectionNav
-
-    private var warning: String? {
-        guard let snap = system.latest else { return nil }
-        if snap.memory.pressure == .critical { return "Memory pressure is high" }
-        if snap.thermal.state == .critical || snap.thermal.state == .serious { return "Mac is running hot" }
-        if snap.thermal.components.contains(where: { $0.tempC >= $0.hotAt }) { return "A component is running hot" }
-        if snap.memory.pressure == .warning { return "Memory pressure is raised" }
-        if snap.thermal.state == .fair || snap.thermal.components.contains(where: { $0.tempC >= $0.warmAt }) {
-            return "Mac is running warm"
-        }
-        if let power = snap.power, power.hasBattery, !power.isCharging, power.batteryPercent <= 20 {
-            return "Battery is low"
-        }
-        return nil
-    }
-
-    var body: some View {
-        Button { nav.go(.mac) } label: {
-            HStack(spacing: 10) {
-                Image(systemName: warning == nil ? "laptopcomputer" : "exclamationmark.triangle")
-                    .font(.system(size: 17)).foregroundStyle(warning == nil ? HP.text2 : HP.amber)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(warning ?? (system.latest == nil ? "Reading your Mac…" : "Mac overview"))
-                        .font(.system(size: CT.body, weight: .semibold))
-                        .foregroundStyle(warning == nil ? HP.text : HP.amber)
-                    if let snap = system.latest {
-                        Text("CPU \(SysFmt.percent(snap.cpu.total))% · Memory \(SysFmt.percent(snap.memory.usedPercent))%")
-                            .font(.system(size: CT.caption)).monospacedDigit().foregroundStyle(HP.text2)
-                    } else {
-                        Text("Metrics appear when available").font(.system(size: CT.caption)).foregroundStyle(HP.text2)
-                    }
-                }
-                Spacer(minLength: 3)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(HP.text3).accessibilityHidden(true)
-            }
-            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(TileButtonStyle(radius: 12))
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens all Mac metrics")
-    }
-}
-
-struct CompactMacTiles: View {
-    @ObservedObject var system: SystemMonitor
-    let nav: SectionNav
-
-    var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
-            if let snap = system.latest {
-                tile(.cpu, "CPU", SysFmt.temp(snap.thermal.cpuTempC)) {
-                    value(snap.cpu.total, SysFmt.percent(snap.cpu.total), "%")
-                } chart: {
-                    Sparkline(values: Array(system.cpuHistory.suffix(30)), maxValue: 100, color: HP.cpu, lineWidth: 1.2)
-                }
-                tile(.gpu, "GPU", SysFmt.temp(snap.thermal.gpuTempC)) {
-                    value(snap.gpu?.utilization ?? 0, snap.gpu.map { SysFmt.percent($0.utilization) } ?? "—", "%")
-                } chart: {
-                    Sparkline(values: Array(system.gpuHistory.suffix(30)), maxValue: 100, color: HP.gpu, lineWidth: 1.2)
-                }
-                tile(.memory, "Memory", nil, dot: HP.pressure(snap.memory.pressure)) {
-                    value(snap.memory.usedPercent, SysFmt.percent(snap.memory.usedPercent), "%")
-                } chart: {
-                    MemoryBar(memory: snap.memory, height: 4)
-                }
-                tile(.network, "Net", nil) {
-                    HStack(spacing: 4) {
-                        (Text("↓").foregroundColor(HP.down) + Text(SysFmt.rateShort(snap.network.downBytesPerSecond)))
-                        (Text("↑").foregroundColor(HP.up) + Text(SysFmt.rateShort(snap.network.upBytesPerSecond)))
-                    }
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(HP.text)
-                    .lineLimit(1)
-                } chart: {
-                    MirrorSparkline(above: Array(system.downHistory.suffix(30)), below: Array(system.upHistory.suffix(30)),
-                                    aboveColor: HP.down, belowColor: HP.up, lineWidth: 1)
-                }
-                tile(.disk, "Disk", "free") {
-                    value(0, "\(Int((Double(snap.disk.freeBytes) / 1_073_741_824).rounded()))", "GB")
-                } chart: {
-                    let used = snap.disk.totalBytes > 0 ? 1 - Double(snap.disk.freeBytes) / Double(snap.disk.totalBytes) : 0
-                    SegmentBar(segments: [.init(fraction: used, color: HP.disk)], height: 4)
-                }
-                if let p = snap.power, p.hasBattery {
-                    tile(.power, "Battery", p.systemWatts.map { String(format: "%.0f W", $0) }) {
-                        value(p.batteryPercent, SysFmt.percent(p.batteryPercent), p.isCharging ? "% ⚡︎" : "%")
-                    } chart: {
-                        SegmentBar(segments: [.init(fraction: p.batteryPercent / 100,
-                                                    color: p.batteryPercent <= 20 ? HP.red : HP.power)], height: 4)
-                    }
-                } else {
-                    tile(.power, "Power", nil) {
-                        value(snap.power?.systemWatts ?? 0, snap.power?.systemWatts.map { String(format: "%.0f", $0) } ?? "—", "W")
-                    } chart: {
-                        Sparkline(values: Array(system.powerHistory.suffix(30)), color: HP.power, lineWidth: 1.2)
-                    }
-                }
-            } else {
-                ForEach(0..<6, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(HP.tile).frame(height: 52)
-                }
-            }
-        }
-    }
-
-    private func value(_ v: Double, _ text: String, _ unit: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 0.5) {
-            RollingNumber(value: v, text: text, size: CT.smallValue)
-            Text(unit).font(.system(size: 11, weight: .semibold)).foregroundStyle(HP.text2)
-        }
-    }
-
-    private func tile<V: View, C: View>(_ kind: SystemDetailKind, _ label: String, _ trailing: String?,
-                                        dot: Color? = nil,
-                                        @ViewBuilder value: () -> V,
-                                        @ViewBuilder chart: () -> C) -> some View {
-        Button { nav.openDetail(kind) } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 3) {
-                    Kicker(text: label)
-                    Spacer(minLength: 2)
-                    if let dot {
-                        Circle().fill(dot).frame(width: 5, height: 5)
-                    } else if let trailing {
-                        Text(trailing).font(.system(size: 11)).foregroundStyle(HP.text3).lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 1)
-                value()
-                Spacer(minLength: 2)
-                chart().frame(height: 11)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(height: 54)
-        }
-        .buttonStyle(TileButtonStyle(radius: 10))
-    }
-}
-
-// MARK: - AI
-
-struct CompactAI: View {
-    @ObservedObject var store: UsageStore
-    let history: UsageHistoryStore
-    let now: Date
-    let nav: SectionNav
-
-    @Environment(\.usageDisplayMode) private var mode
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if store.usages.isEmpty {
-                Text("No AI accounts switched on").font(.system(size: CT.body, weight: .semibold))
-                Button("Connect an account", action: nav.openSettings).buttonStyle(PillButtonStyle())
-            }
-            ForEach(store.usages) { usage in
-                let identity = ProviderIdentity.identity(for: usage.providerID)
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 7) {
-                        BrandMark(kind: identity.mark, size: 15, tint: identity.accent).accessibilityHidden(true)
-                        Text(usage.displayName).font(.system(size: CT.title, weight: .semibold))
-                            .foregroundStyle(HP.text)
-                        Spacer(minLength: 4)
-                        if let plan = usage.plan {
-                            Text(plan).font(.system(size: CT.caption)).foregroundStyle(HP.text2)
-                        }
-                    }
-                    if let balance = usage.balance {
-                        Text("\(Fmt.money(balance.amount, currency: balance.currency)) credit left")
-                            .font(.system(size: CT.value, weight: .semibold)).foregroundStyle(HP.text)
-                    }
-                    ForEach(usage.windows, id: \.self) { window in
-                        let reading = WindowReading(window: window, providerID: usage.providerID,
-                                                    history: history, now: now, mode: mode)
-                        HStack(alignment: .center, spacing: 10) {
-                            ForecastRing(share: reading.share, projected: reading.projected,
-                                         isCritical: window.isCritical, color: identity.accent,
-                                         size: 28, lineWidth: 3).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(window.displayName).fontWeight(.medium)
-                                    Spacer(minLength: 4)
-                                    Text(window.percent(mode).map { "\(Fmt.percent($0)) \(mode.unit)" } ?? "No reading")
-                                        .fontWeight(.semibold).monospacedDigit()
-                                        .foregroundStyle(window.isCritical ? HP.amber : HP.text)
-                                }
-                                .font(.system(size: CT.body)).foregroundStyle(HP.text)
-                                Text(Fmt.remaining(to: window.resetsAt, now: now).map { "Resets \($0)" } ?? "Reset time unavailable")
-                                    .font(.system(size: CT.caption)).foregroundStyle(HP.text2)
-                                if reading.alarming && !usage.isStale(now: now) {
-                                    Text(reading.compact).font(.system(size: CT.caption, weight: .medium))
-                                        .foregroundStyle(HP.amber)
-                                }
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                    if let status = usage.freshnessCaption(now: now) {
-                        Text(status).font(.system(size: CT.caption))
-                            .foregroundStyle(usage.needsSetup || usage.isStale(now: now) ? HP.amber : HP.text2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if usage.needsSetup {
-                        Button(usage.providerID == "claude" ? "Sign in with Claude Code" : "Open Settings",
-                               action: usage.providerID == "claude" ? nav.signInClaude : nav.openSettings)
-                            .buttonStyle(PillButtonStyle(compact: true))
-                    }
-                    if !usage.extras.isEmpty {
-                        Text(usage.extras.joined(separator: " · "))
-                            .font(.system(size: CT.caption)).foregroundStyle(HP.text2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(12).tile(radius: 12)
-            }
-            if store.usages.contains(where: { !$0.windows.isEmpty }) {
-                Text("Lighter arc estimates usage before the reset.")
-                    .font(.system(size: CT.caption)).foregroundStyle(HP.text3)
-                    .padding(.horizontal, 2)
-            }
-        }
-    }
-}
-
-// MARK: - Agents
-
-struct CompactAgents: View {
-    let sessions: [AgentSession]
-    let now: Date
-    var onJump: (AgentSession) -> Void = { _ in }
-
-    @Environment(\.usageDisplayMode) private var mode
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if sessions.isEmpty {
-                Text("No agent sessions right now")
-                    .font(.system(size: CT.body)).foregroundStyle(HP.text2)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-            }
-            ForEach(Array(sessions.enumerated()), id: \.element.id) { index, s in
-                if index > 0 { Rectangle().fill(HP.stroke).frame(height: 1) }
-                let identity = ProviderIdentity.identity(for: s.providerID)
-                Button { onJump(s) } label: {
-                HStack(spacing: 8) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(HP.tile)
-                        BrandMark(kind: identity.mark, size: 12, tint: identity.accent)
-                    }
-                    .frame(width: 22, height: 22)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(s.name).font(.system(size: CT.title, weight: .semibold))
-                            .foregroundStyle(s.activity == .ended ? HP.text2 : HP.text).lineLimit(1)
-                        Text([s.projectName.isEmpty ? nil : s.projectName, s.surface,
-                              s.contextPercent(mode).map { "\(Fmt.percent($0)) context" }]
-                                .compactMap { $0 }.joined(separator: " · "))
-                            .font(.system(size: 11)).foregroundStyle(HP.text3).lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(AgentStatus.word(s)).font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AgentStatus.color(s))
-                        Text(AgentStatus.caption(s, now: now)).font(.system(size: 11))
-                            .foregroundStyle(HP.text3).lineLimit(1)
-                    }
-                    .frame(maxWidth: 120, alignment: .trailing)
-                }
-                .frame(minHeight: 48)
-                .padding(.horizontal, 6)
-                }
-                // A live session is one click from the app it runs in.
-                .buttonStyle(RowButtonStyle())
-                .disabled(s.activity == .ended)
-                .help(s.activity == .ended ? "" : "Go to \(s.surface ?? "its app")")
-                .accessibilityElement(children: .combine)
-                .accessibilityHint(s.activity == .ended ? "Session has ended" : "Opens the session’s app")
-                .padding(.horizontal, -6)
-            }
-        }
-        .padding(.horizontal, 10)
-        .tile(radius: 12)
     }
 }
 

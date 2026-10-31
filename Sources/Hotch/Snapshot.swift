@@ -33,7 +33,7 @@ enum Snapshot {
     /// rendered at all. Its disabled state was invisible for exactly that long.
     static func runBlockingAndExit(demo: Bool,
                                    path: String,
-                                   page: PanelPage = .now,
+                                   page: PanelPage = .home,
                                    detail: SystemDetailKind? = nil,
                                    backpackCard: Bool = false,
                                    realNotch: Bool = false,
@@ -293,7 +293,7 @@ enum Snapshot {
     /// Renders the menu bar popover to a PNG. Same demo data as
     /// `--snapshot-demo`, so the two surfaces can be compared side by side.
     @MainActor
-    static func runPopoverAndExit(demo: Bool, path: String, page: PanelPage = .now,
+    static func runPopoverAndExit(demo: Bool, path: String, page: PanelPage = .home,
                                   detail: SystemDetailKind? = nil,
                                   backpackCard: Bool = false,
                                   dark: Bool = false,
@@ -465,6 +465,7 @@ enum Snapshot {
     /// and the pill speaking an alert.
     @MainActor
     static func runAnchorsAndExit(path: String, dark: Bool) -> Never {
+        RailGeometry.count = demoReadouts.count
         _ = NSApplication.shared
         if dark { NSApp.appearance = NSAppearance(named: .darkAqua) }
         let store = UsageStore(providers: [ClaudeProvider(allowRemote: false), CodexProvider(allowRemote: false)])
@@ -488,11 +489,12 @@ enum Snapshot {
             state.phase = phase
             state.side = side
             var policy = RailSlotPolicy()
-            policy.update(focusActive: focus.isRunning, expanded: phase == .expanded)
+            policy.update(chosen: Snapshot.demoReadouts, focusClock: true, focusActive: focus.isRunning,
+                          expanded: phase == .expanded)
             state.readouts = policy.targets
             if phase == .alert { state.alert = alert }
             return RailView(state: state, pages: pages, store: store, sessionStore: sessions, system: system, focus: focus,
-                            onSelect: { _ in }, onDrag: { _ in })
+                            onTap: {}, onDrag: { _ in })
         }
         func float(_ style: FloatState.Style, alerting: Bool = false) -> some View {
             let state = FloatState()
@@ -510,7 +512,7 @@ enum Snapshot {
                 caption("Edge tab")
                 rail(.collapsed).frame(width: RailController.tabSize.width, height: RailController.tabSize.height)
                 caption("Edge tab speaking")
-                rail(.alert).frame(width: RailController.alertSize.width, height: RailController.alertSize.height)
+                speakingTab(rail(.alert).frame(width: RailController.tabSize.width, height: RailController.tabSize.height))
                 caption("Pill")
                 float(.pill).frame(height: 34)
                 caption("Pill speaking")
@@ -575,6 +577,7 @@ enum Snapshot {
     /// laying out on a page. The same demo fixture as the anchors scene.
     @MainActor
     static func runPartsAndExit(directory: String, dark: Bool) -> Never {
+        RailGeometry.count = demoReadouts.count
         _ = NSApplication.shared
         if dark { NSApp.appearance = NSAppearance(named: .darkAqua) }
         let store = UsageStore(providers: [ClaudeProvider(allowRemote: false), CodexProvider(allowRemote: false)])
@@ -600,16 +603,18 @@ enum Snapshot {
             return model
         }
         func rail(_ phase: RailState.Phase, side: HotchPrefs.EdgeSide = .right,
-                  page: PanelPage = .now) -> some View {
+                  page: PanelPage = .home, hovering: Bool = false) -> some View {
             let state = RailState()
             state.phase = phase
             state.side = side
+            state.hovering = hovering
             var policy = RailSlotPolicy()
-            policy.update(focusActive: focus.isRunning, expanded: phase == .expanded)
+            policy.update(chosen: Snapshot.demoReadouts, focusClock: true, focusActive: focus.isRunning,
+                          expanded: phase == .expanded)
             state.readouts = policy.targets
             if phase == .alert { state.alert = alert }
             return RailView(state: state, pages: pages(page), store: store, sessionStore: sessions, system: system, focus: focus,
-                            onSelect: { _ in }, onDrag: { _ in })
+                            onTap: {}, onDrag: { _ in })
         }
         func float(_ style: FloatState.Style, alerting: Bool = false) -> some View {
             let state = FloatState()
@@ -618,10 +623,11 @@ enum Snapshot {
             return FloatView(state: state, store: store, sessionStore: sessions, system: system, focus: focus,
                              onSize: { _ in }, onDrag: { _ in }, onTap: {})
         }
-        func card(_ page: PanelPage, menuBar: Bool = false) -> some View {
+        func card(_ page: PanelPage, menuBar: Bool = false, offer: AppUpdater.Offer? = nil) -> some View {
             CompactCard(store: store, sessionStore: sessions, clipboard: clipboard, focus: focus,
                         pages: pages(page), system: system, backpack: BackpackManager.shared, now: Date(),
-                        history: history, showsTabs: true, showsAppButtons: menuBar, scrollable: false)
+                        history: history, showsTabs: true, showsAppButtons: menuBar, scrollable: false,
+                        renderedOffer: offer)
                 .background(GlassBackground(radius: CardMetrics.radius))
                 .clipShape(RoundedRectangle(cornerRadius: CardMetrics.radius, style: .continuous))
         }
@@ -649,24 +655,26 @@ enum Snapshot {
 
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         write("tab", rail(.collapsed).frame(width: RailController.tabSize.width, height: RailController.tabSize.height))
-        write("tab-alert", rail(.alert).frame(width: RailController.alertSize.width, height: RailController.alertSize.height))
-        write("open-now", open(.now))
+        write("tab-hover", rail(.collapsed, hovering: true)
+            .frame(width: RailController.tabSize.width, height: RailController.tabSize.height))
+        write("tab-alert", speakingTab(rail(.alert).frame(width: RailController.tabSize.width,
+                                                          height: RailController.tabSize.height)))
+        write("open-home", open(.home))
         write("open-ai", open(.ai))
-        write("open-sessions", open(.agents))
         write("open-mac", open(.mac))
-        write("open-focus", open(.focus))
-        write("open-clipboard", open(.clipboard))
+        write("open-desk", open(.desk))
         write("tab-left", rail(.collapsed, side: .left).frame(width: RailController.tabSize.width, height: RailController.tabSize.height))
         write("open-left", HStack(alignment: .top, spacing: RailGeometry.cardGap) {
             rail(.expanded, side: .left).frame(width: RailController.columnSize.width, height: RailController.columnSize.height)
-            card(.now)
+            card(.home)
         })
         // Card and rail apart, so a film can resize the card against a fixed rail.
-        for (name, page) in [("now", PanelPage.now), ("ai", .ai), ("sessions", .agents), ("mac", .mac), ("focus", .focus), ("clipboard", .clipboard)] {
+        for (name, page) in [("home", PanelPage.home), ("ai", .ai), ("mac", .mac), ("desk", .desk)] {
             write("card-\(name)", card(page))
             write("rail-\(name)", rail(.expanded, page: page).frame(width: RailController.columnSize.width, height: RailController.columnSize.height))
         }
-        write("menubar-card", card(.now, menuBar: true))
+        write("menubar-card", card(.home, menuBar: true))
+        write("card-update", card(.home, offer: .available(version: "2.5.0")))
         write("bottom", rail(.collapsed, side: .bottom).frame(width: RailController.barSize.width, height: RailController.barSize.height))
         write("bottom-open", rail(.expanded, side: .bottom).frame(width: RailController.barOpenSize.width, height: RailController.barOpenSize.height))
         write("bottom-alert", VStack(spacing: 6) {
@@ -690,7 +698,8 @@ enum Snapshot {
     /// rail. The desktop is fictional; no screen pixels or user content enter
     /// this render. Card and rail keep these coordinates across every page.
     @MainActor
-    static func runOverviewAndExit(path: String, dark: Bool, page: PanelPage = .now) -> Never {
+    static func runOverviewAndExit(path: String, dark: Bool, page: PanelPage = .home) -> Never {
+        RailGeometry.count = demoReadouts.count
         _ = NSApplication.shared
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let fixture = DemoScene()
@@ -705,6 +714,7 @@ enum Snapshot {
     /// encoder can hold or crossfade frames without fabricating UI movement.
     @MainActor
     static func runStoryAndExit(directory: String, dark: Bool) -> Never {
+        RailGeometry.count = demoReadouts.count
         _ = NSApplication.shared
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let fixture = DemoScene()
@@ -713,13 +723,13 @@ enum Snapshot {
             writeNative(desktopScene(fixture, phase: phase), size: desktopSize, path: path, dark: dark)
         }
         write("00-resting", phase: .collapsed)
-        let pages: [(String, PanelPage)] = [("01-now", .now), ("02-ai", .ai), ("03-sessions", .agents),
-                                          ("04-mac", .mac), ("05-focus", .focus), ("06-clipboard", .clipboard)]
+        let pages: [(String, PanelPage)] = [("01-home", .home), ("02-ai", .ai), ("03-mac", .mac),
+                                          ("04-desk", .desk)]
         for (name, page) in pages {
             fixture.pages.page = page
             write(name, phase: .expanded)
         }
-        write("07-alert", phase: .alert)
+        write("05-alert", phase: .alert)
         print("story frames written to \(directory) (fixture: \(demoFixture.rawValue))")
         exit(0)
     }
@@ -756,7 +766,8 @@ enum Snapshot {
         state.phase = phase
         state.side = .right
         var policy = RailSlotPolicy()
-        policy.update(focusActive: fixture.focus.isRunning, expanded: phase == .expanded)
+        policy.update(chosen: Snapshot.demoReadouts, focusClock: true, focusActive: fixture.focus.isRunning,
+                      expanded: phase == .expanded)
         state.readouts = policy.targets
         state.alert = phase == .alert ? LiveActivity(icon: .brand("codex"), leading: "Refactor upload…",
                                                     trailing: "needs approval", tint: .white,
@@ -790,7 +801,7 @@ enum Snapshot {
                             y: visible.height - attachment)
             }
             RailView(state: state, pages: fixture.pages, store: fixture.store, sessionStore: fixture.sessions,
-                     system: fixture.system, focus: fixture.focus, onSelect: { _ in }, onDrag: { _ in })
+                     system: fixture.system, focus: fixture.focus, onTap: {}, onDrag: { _ in })
                 .frame(width: RailController.size(for: phase, side: .right).width, height: RailGeometry.height)
                 .offset(x: visible.maxX - RailController.size(for: phase, side: .right).width,
                         y: visible.height - rail.maxY)
@@ -1176,6 +1187,9 @@ enum Snapshot {
     /// only way to see the token caption disagree with the percentage), and one
     /// row with no reading at all, which is what a Codex thread looks like
     /// before it has reported a turn.
+    /// The edge tab as someone with Claude and Codex both connected sees it.
+    static let demoReadouts: [RailSlotPolicy.Target] = [.provider("claude"), .provider("codex"), .sessions, .memory]
+
     static func demoSessions(now: Date = Date()) -> [AgentSession] {
         [
             AgentSession(id: "demo-1", providerID: "claude",
@@ -1183,13 +1197,20 @@ enum Snapshot {
                          projectName: "weather-app", activity: .needsInput,
                          lastEventAt: now.addingTimeInterval(-3 * 60),
                          startedAt: now.addingTimeInterval(-52 * 60),
-                         contextTokens: 178_400, contextLimit: 200_000),
+                         contextTokens: 178_400, contextLimit: 200_000,
+                         waitingFor: "permission to run Bash", surface: "Terminal",
+                         step: AgentStep(label: "Install the theme package",
+                                         command: "pnpm add -D @radix-ui/themes",
+                                         startedAt: now.addingTimeInterval(-124), symbol: "terminal")),
             AgentSession(id: "demo-2", providerID: "claude",
                          name: "Fix the checkout test",
                          projectName: "storefront", activity: .working,
                          lastEventAt: now.addingTimeInterval(-6),
                          startedAt: now.addingTimeInterval(-14 * 60),
-                         contextTokens: 94_100, contextLimit: 200_000),
+                         contextTokens: 94_100, contextLimit: 200_000,
+                         surface: "Claude desktop",
+                         step: AgentStep(label: "Run the checkout tests", command: "npm test -- checkout",
+                                         startedAt: now.addingTimeInterval(-12), symbol: "terminal")),
             AgentSession(id: "demo-3", providerID: "codex", name: "Refactor upload pipeline",
                          projectName: "photo-sync", activity: .working,
                          lastEventAt: now.addingTimeInterval(-3),
@@ -1395,5 +1416,22 @@ enum Snapshot {
         // Codex week: a heavy afternoon, ~1.2%/hr over four days runs out first.
         history.seed(providerID: "codex", windowLabel: "7d",
                      samples: ramp(hours: 1.5, step: 120, from: 56.2, to: 58, wobble: 0.1))
+    }
+}
+
+/// An edge tab with its alert's label beside it, level with the readout the
+/// alert is about: in the app they are two windows, here one picture.
+@MainActor
+private func speakingTab<Tab: View>(_ tab: Tab) -> some View {
+    let alert = LiveActivity(icon: .brand("codex"), leading: "Refactor upload…", trailing: "needs approval",
+                             tint: .white, trailingTint: HP.amber, dot: true, key: "need-demo")
+    let label = DockLabelState()
+    label.alert = alert
+    label.visible = true
+    label.growsFrom = .trailing
+    return HStack(alignment: .top, spacing: 8) {
+        DockLabelView(state: label)
+            .padding(.top, max(0, RailView.bubbleCenter(for: alert, readouts: Snapshot.demoReadouts) - 14))
+        tab
     }
 }

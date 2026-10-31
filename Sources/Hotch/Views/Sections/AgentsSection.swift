@@ -41,8 +41,12 @@ struct AgentRow: View {
     @Environment(\.usageDisplayMode) private var mode
     private var identity: ProviderIdentity { ProviderIdentity.identity(for: session.providerID) }
 
+    /// The step in flight when there is one: the command waiting for
+    /// approval, or what a working session is doing. Otherwise where it runs.
     private var subtitle: String {
-        [session.projectName.isEmpty ? nil : session.projectName, session.surface, compact ? nil : session.model]
+        if session.activity == .needsInput, let ask = session.step?.command ?? session.step?.label { return ask }
+        if session.activity <= .shell, let step = session.step { return step.label }
+        return [session.projectName.isEmpty ? nil : session.projectName, session.surface, compact ? nil : session.model]
             .compactMap { $0 }
             .joined(separator: " · ")
     }

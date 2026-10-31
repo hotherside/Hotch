@@ -80,6 +80,37 @@ final class HotchPrefs: ObservableObject {
     /// ⌥⌘H opens the card wherever Hotch lives.
     @Published var shortcutEnabled: Bool { didSet { defaults.set(shortcutEnabled, forKey: Keys.shortcut) } }
 
+    /// What the screen-edge tab can show, one slot each, in this order.
+    enum RailReadout: String, CaseIterable, Identifiable {
+        case claude, codex, sessions, memory, cpu
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .claude: return "Claude"
+            case .codex: return "Codex"
+            case .sessions: return "Sessions"
+            case .memory: return "Memory"
+            case .cpu: return "CPU"
+            }
+        }
+        /// The provider a usage readout belongs to, which must be switched on.
+        var providerID: String? {
+            switch self {
+            case .claude, .codex: return rawValue
+            default: return nil
+            }
+        }
+    }
+
+    /// The readouts chosen for the edge tab. Usage for every provider by
+    /// default, so someone with Claude and Codex sees both; a provider that
+    /// is switched off in AI providers drops out on its own.
+    @Published var railReadouts: Set<RailReadout> {
+        didSet { defaults.set(railReadouts.map(\.rawValue).sorted(), forKey: Keys.railReadouts) }
+    }
+    /// A running Focus timer's clock takes the tab's last slot until it ends.
+    @Published var railFocusClock: Bool { didSet { defaults.set(railFocusClock, forKey: Keys.railFocusClock) } }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         menuBarCPU = defaults.object(forKey: Keys.cpu) as? Bool ?? false
@@ -96,6 +127,10 @@ final class HotchPrefs: ObservableObject {
         floatX = defaults.object(forKey: Keys.floatX) as? Double ?? 1
         floatY = defaults.object(forKey: Keys.floatY) as? Double ?? 0
         shortcutEnabled = defaults.object(forKey: Keys.shortcut) as? Bool ?? true
+        railReadouts = defaults.stringArray(forKey: Keys.railReadouts)
+            .map { Set($0.compactMap(RailReadout.init(rawValue:))) }
+            ?? [.claude, .codex, .sessions, .memory]
+        railFocusClock = defaults.object(forKey: Keys.railFocusClock) as? Bool ?? true
     }
 
     var wantsMenuBarSystem: Bool { menuBarCPU || menuBarMemory || menuBarNetwork }
@@ -115,5 +150,7 @@ final class HotchPrefs: ObservableObject {
         static let floatX = "floatX"
         static let floatY = "floatY"
         static let shortcut = "shortcutEnabled"
+        static let railReadouts = "railReadouts"
+        static let railFocusClock = "railFocusClock"
     }
 }

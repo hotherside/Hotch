@@ -49,7 +49,7 @@ struct AnchorFocusReadout: View {
                     .padding(.horizontal, 4)
                 }
             } else if style == .rail {
-                Image(systemName: PanelPage.focus.symbol)
+                Image(systemName: "timer")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(HP.text3)
             }
         }

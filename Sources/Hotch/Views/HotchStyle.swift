@@ -59,6 +59,15 @@ enum HMotion {
     /// Live telemetry updates in place; animation is reserved for user actions.
     static var tick: Animation? { nil }
     static var sectionTransition: AnyTransition { reduceMotion ? .identity : .opacity }
+    /// A page arriving in a viewport whose height follows it: the pages swap
+    /// in one frame and only the height moves. Fading the new page in after
+    /// the old one left blanked the card for a tenth of a second on every
+    /// switch, which read as the page reloading; fading across them stacked
+    /// two layouts. The removal carries no animation, so the old page cannot
+    /// linger for the length of the height's.
+    static var sectionEntrance: AnyTransition {
+        .asymmetric(insertion: .identity, removal: AnyTransition.identity.animation(nil))
+    }
 }
 
 struct BlurFade: ViewModifier {
@@ -374,6 +383,10 @@ struct HotchTabBar: View {
     var pages: [PanelPage] = PanelPage.allCases
     var dimSelection = false
     var compact = false
+    /// Symbols only, for the card's header row: the page's name is the
+    /// header's title beside it, and each tab still names itself on hover
+    /// and to VoiceOver.
+    var iconsOnly = false
     var onSelect: ((PanelPage) -> Void)? = nil
 
     var body: some View {
@@ -385,16 +398,19 @@ struct HotchTabBar: View {
                     else { selection = page }
                 } label: {
                     VStack(spacing: compact ? 3 : 2) {
-                        Image(systemName: page.symbol)
-                            .font(.system(size: compact ? 13 : 13.5, weight: .semibold))
-                            .frame(height: compact ? 15 : 14)
+                        symbol(page)
+                            .font(.system(size: compact || iconsOnly ? 13 : 13.5, weight: .semibold))
+                            .frame(width: iconsOnly ? 16 : nil, height: compact || iconsOnly ? 15 : 14)
                             .accessibilityHidden(true)
-                        Text(page.title)
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.9)
+                        if !iconsOnly {
+                            Text(page.title)
+                                .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.9)
+                        }
                     }
-                    .frame(width: compact ? 54 : 70, height: compact ? 40 : 32)
+                    .frame(width: iconsOnly ? 34 : (compact ? 54 : 70),
+                           height: iconsOnly ? 28 : (compact ? 40 : 32))
                     .foregroundStyle(selected ? HP.text : HP.text2)
                     .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(selected ? HP.pill : .clear))
@@ -415,17 +431,57 @@ struct HotchTabBar: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sections")
     }
+
+    @ViewBuilder
+    private func symbol(_ page: PanelPage) -> some View {
+        if page == .home {
+            HotchGlyph(lineWidth: 1.9).frame(width: 14, height: 14)
+        } else {
+            Image(systemName: page.symbol)
+        }
+    }
 }
 
-/// Outgoing and incoming pages overlap at the top rather than entering the
-/// vertical layout together. Identity belongs to the viewport: each navigation
-/// starts at the top, while ordinary telemetry leaves its scroll position and
-/// controls intact. The short fade is bounded by the viewport’s clip.
+/// The app icon's mark at symbol size: the companion curve in the current
+/// foreground, the warm signal always clay. Drawn from the same proportions
+/// as `HotchIcon.drawMark`, with the y axis flipped for SwiftUI.
+struct HotchGlyph: View {
+    var lineWidth: CGFloat = 2
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            Path { path in
+                path.move(to: CGPoint(x: w * 0.60, y: h * 0.16))
+                path.addCurve(to: CGPoint(x: w * 0.60, y: h * 0.84),
+                              control1: CGPoint(x: w * 0.17, y: h * 0.21),
+                              control2: CGPoint(x: w * 0.17, y: h * 0.79))
+            }
+            .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            Circle()
+                .fill(HotchGlyph.signal)
+                .frame(width: w * 0.24, height: h * 0.24)
+                .position(x: w * 0.66, y: h * 0.5)
+        }
+    }
+
+    static let signal = Dynamic.color(dark: Dynamic.rgb(1, 0.55, 0.40), light: Dynamic.rgb(0.86, 0.42, 0.28))
+}
+
+/// One page at a time, with the viewport's height easing to each new page's
+/// own height as it fades in. Sizing to the larger of an outgoing and an
+/// incoming page until the fade ended made every switch two moves: a fade,
+/// then a snap to the new height. Identity belongs to the viewport: each
+/// navigation starts at the top, while ordinary telemetry leaves its scroll
+/// position and controls intact and changes the height without motion.
 struct SectionViewport<Content: View>: View {
     let identity: String
     let maximumHeight: CGFloat
     let scrollable: Bool
     let content: Content
+    /// The shown page's own height, and the page it was measured for.
+    @State private var height: CGFloat?
+    @State private var measured: String?
 
     init(identity: String, maximumHeight: CGFloat, scrollable: Bool,
          @ViewBuilder content: () -> Content) {
@@ -447,15 +503,39 @@ struct SectionViewport<Content: View>: View {
                     .frame(maxHeight: maximumHeight)
                     .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    content
+                    content.fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .background(GeometryReader { geo in
+                Color.clear.preference(key: ViewportHeights.self, value: [identity: geo.size.height])
+            })
             .id(identity)
-            .transition(HMotion.sectionTransition)
+            .transition(HMotion.sectionEntrance)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: height, alignment: .top)
         .clipped()
+        .onPreferenceChange(ViewportHeights.self) { heights in
+            guard let next = heights[identity], next > 0, next != height else { return }
+            if measured != nil, measured != identity, let animation = HMotion.section {
+                withAnimation(animation) { height = next }
+            } else {
+                var still = Transaction()
+                still.disablesAnimations = true
+                withTransaction(still) { height = next }
+            }
+            measured = identity
+        }
         .animation(HMotion.section, value: identity)
+    }
+}
+
+/// Each page's measured height, by identity, so a page leaving cannot be
+/// mistaken for the one arriving.
+private struct ViewportHeights: PreferenceKey {
+    static let defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue()) { $1 }
     }
 }
 

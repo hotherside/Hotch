@@ -67,7 +67,7 @@ struct MeterBar: View {
 /// under the other would read as a haunting.
 @MainActor
 final class PopoverPageModel: ObservableObject {
-    @Published var page: PanelPage = .now
+    @Published var page: PanelPage = .home
     @Published var macDetail: SystemDetailKind?
     @Published var backpackCard = false
     /// Set by the status item while the popover is on screen; the content
@@ -174,20 +174,22 @@ struct StatusPopoverContent: View {
                              layout: layout, active: true)
             } else {
                 switch pages.page {
-                case .now:
+                case .home:
                     NowSection(store: store, sessionStore: sessionStore, system: system, history: history,
                                now: now, active: true, layout: layout, nav: nav, backpack: backpack)
                 case .ai:
-                    AISection(store: store, history: history, now: now, active: true, layout: layout, nav: nav)
-                case .agents:
-                    AgentsSection(sessions: sessionStore.sessions, now: now, active: true, layout: layout)
+                    VStack(alignment: .leading, spacing: 14) {
+                        AISection(store: store, history: history, now: now, active: true, layout: layout, nav: nav)
+                        AgentsSection(sessions: sessionStore.sessions, now: now, active: true, layout: layout)
+                    }
                 case .mac:
                     MacSection(system: system, detail: pages.macDetail, active: true, layout: layout, nav: nav)
-                case .focus:
-                    PopoverFocusSection(focus: focus, now: now)
-                case .clipboard:
-                    PopoverClipboardSection(items: clipboard.items, enabled: clipboard.enabled, now: now,
-                                            onCopy: { clipboard.copyBack($0) })
+                case .desk:
+                    VStack(alignment: .leading, spacing: 14) {
+                        PopoverFocusSection(focus: focus, now: now)
+                        PopoverClipboardSection(items: clipboard.items, enabled: clipboard.enabled, now: now,
+                                                onCopy: { clipboard.copyBack($0) })
+                    }
                 }
             }
         }

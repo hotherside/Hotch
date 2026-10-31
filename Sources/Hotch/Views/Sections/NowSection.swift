@@ -255,7 +255,7 @@ struct AgentsStrip: View {
     private var idle: Int { sessions.filter { $0.activity == .waiting }.count }
 
     var body: some View {
-        Button { nav.go(.agents) } label: {
+        Button { nav.go(.ai) } label: {
             content
                 .padding(.horizontal, 12)
                 .padding(.vertical, layout.isPopover ? 10 : 0)

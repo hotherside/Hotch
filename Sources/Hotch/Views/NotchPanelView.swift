@@ -306,34 +306,36 @@ struct PanelPagesView: View {
     private func page(_ page: PanelPage) -> some View {
         let layout = SectionLayout.panel(width: contentWidth)
         switch page {
-        case .now:
+        case .home:
             NowSection(store: store, sessionStore: sessionStore, system: system, history: history,
                        now: now, active: model.expanded, layout: layout, nav: nav, backpack: backpack)
                 .padding(.top, 4)
         case .ai:
+            // Usage first, then the sessions spending it: the card nests them
+            // per provider, and this wide panel keeps its two full sections.
             scroll {
-                AISection(store: store, history: history, now: now, active: model.expanded,
-                          layout: layout, nav: nav)
-            }
-        case .agents:
-            scroll {
-                AgentsSection(sessions: sessionStore.sessions, now: now, active: model.expanded,
-                              layout: layout)
+                VStack(spacing: 14) {
+                    AISection(store: store, history: history, now: now, active: model.expanded,
+                              layout: layout, nav: nav)
+                    AgentsSection(sessions: sessionStore.sessions, now: now, active: model.expanded,
+                                  layout: layout)
+                }
             }
         case .mac:
             MacSection(system: system, detail: model.macDetail, active: model.expanded,
                        layout: layout, nav: nav)
                 .padding(.top, 4)
-        case .focus:
-            FocusPageContent(focus: focus, now: now, active: model.expanded,
-                             onEditingChanged: { actions.setEditing($0) })
-                .frame(width: contentWidth)
-                .padding(.top, 14)
-        case .clipboard:
+        case .desk:
             scroll {
-                ClipboardPageRows(items: clipboard.items, enabled: clipboard.enabled, now: now,
-                                  active: model.expanded, onCopy: { clipboard.copyBack($0) })
-                    .frame(width: contentWidth)
+                VStack(alignment: .leading, spacing: 16) {
+                    FocusPageContent(focus: focus, now: now, active: model.expanded,
+                                     onEditingChanged: { actions.setEditing($0) })
+                        .padding(.top, 12)
+                    ClipboardPageRows(items: clipboard.items, enabled: clipboard.enabled, now: now,
+                                      active: model.expanded, onCopy: { clipboard.copyBack($0) })
+                    BackpackDiscoveryRow(backpack: backpack, action: nav.openBackpack)
+                }
+                .frame(width: contentWidth)
             }
         }
     }
@@ -360,7 +362,7 @@ struct PanelPagesView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             if let offer = updates.offer, model.revealHint == nil, !model.backpackCard {
-                UpdateFooterLine(offer: offer) { updates.checkForUpdates() }
+                UpdatePill(offer: offer) { updates.checkForUpdates() }
             } else {
                 Text(footerText)
                     .font(.system(size: 11))
@@ -395,16 +397,15 @@ struct PanelPagesView: View {
         if model.revealHint != nil { return "" }
         if model.backpackCard { return backpack.footerLine }
         switch model.page {
-        case .now, .ai:
+        case .home:
             return Fmt.ago(store.lastRefresh, now: now).map { "updated \($0)" } ?? "updating"
-        case .agents:
-            return sessionStore.summaryLine ?? "from each agent's own records"
+        case .ai:
+            return sessionStore.summaryLine
+                ?? Fmt.ago(store.lastRefresh, now: now).map { "updated \($0)" } ?? "updating"
         case .mac:
             return "live · every second"
-        case .focus:
-            return ""
-        case .clipboard:
-            return clipboard.enabled ? "memory only · kept until you quit" : "clipboard history is off"
+        case .desk:
+            return clipboard.enabled ? "clipboard in memory only · kept until you quit" : "clipboard history is off"
         }
     }
 
