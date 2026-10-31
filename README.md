@@ -13,12 +13,12 @@ Recorded from the real app with demo data. [Watch the full 26-second reel](docs/
 ## Features
 
 - Usage windows for Claude and Codex, plus optional balance or usage sources for Grok, Kimi, and DeepSeek.
-- Live Claude Code and Codex session summaries, with a shortcut to bring the related app to the front. This brings forward the app surface; it does not guarantee opening a particular thread.
+- Live Claude Code and Codex session summaries, nested under each provider's usage, with a shortcut to bring the related app to the front. Claude Code sessions also show the step they are on, or the command waiting for your approval. This brings forward the app surface; it does not guarantee opening a particular thread.
 - CPU, memory, network, disk, battery, process, and optional hardware sensor readings.
 - A Focus timer or stopwatch with explicit controls and a persistent clock on your selected companion.
 - Discoverable Backpack mode for keeping agents awake with the lid closed, with one-time helper approval and automatic limits.
 - Optional in-memory clipboard history and brief alerts.
-- A compact three-readout tab on the left, right or bottom, with all six sections inside the card; the original Notch view; floating pill and orb; or menu bar only.
+- A compact three-readout tab on the left, right or bottom, with four tabs inside the card (Hotch, AI, Mac and Desk); the original Notch view; floating pill and orb; or menu bar only.
 
 ![Six homes for Hotch: the screen edge, the notch, the menu bar, a floating pill, an orb, and beside the Dock](docs/marketing/stills/hotch-homes.jpg)
 

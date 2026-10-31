@@ -731,10 +731,18 @@ clean:
 	rm -rf "$(BUILD_DIR)" .build .build-x86
 
 # Isolated checks: no real provider requests, clipboard capture, or power changes.
+# The card's motion between pages, sampled frame by frame from real but
+# unseen windows. Needs a logged-in GUI session and takes about a minute, so
+# it runs on its own rather than in `check`. Pass QA_DIR to keep filmstrips.
+.PHONY: check-card-motion
+check-card-motion: build
+	"$(BIN)" --check-card-motion $(QA_DIR)
+
 .PHONY: check
 check: check-version build
 	"$(BIN)" --check-rail
 	"$(BIN)" --check-session-handoff
+	"$(BIN)" --check-session-steps
 	"$(BIN)" --check-welcome
 	"$(BIN)" --check-focus
 	"$(BIN)" --check-system-demand

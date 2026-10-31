@@ -16,42 +16,58 @@ enum RailGeometryCheck {
             CGRect(x: 1440, y: -640, width: 1024, height: 730),
         ]
         let heights: [CGFloat] = [196, 324, CardMetrics.maxHeight]
-        check("three status targets have at least 40pt hit areas", RailGeometry.count == 3 && RailGeometry.slot >= 40)
-        check("side targets fit across the rail", RailGeometry.width >= RailGeometry.slot)
-        check("the side footprint reserves equal room around the targets",
-              RailGeometry.height == RailGeometry.endInset * 2 + CGFloat(RailGeometry.count) * RailGeometry.slot)
+        check("every readout has at least a 40pt slot", RailGeometry.slot >= 40)
+        check("side readouts fit across the rail", RailGeometry.width >= RailGeometry.slot)
+
+        let claude = RailSlotPolicy.Target.provider("claude")
+        let codex = RailSlotPolicy.Target.provider("codex")
+        let chosen: [RailSlotPolicy.Target] = [claude, codex, .sessions, .memory]
         var policy = RailSlotPolicy()
-        check("idle readouts are AI, Sessions and Mac", policy.targets == [.ai, .sessions, .mac])
-        policy.update(focusActive: false, expanded: true)
-        policy.update(focusActive: true, expanded: true)
-        check("Focus starting cannot move an open Mac target", policy.targets == [.ai, .sessions, .mac])
-        policy.update(focusActive: true, expanded: false)
-        check("closing brings running Focus into the third slot", policy.targets == [.ai, .sessions, .focus])
-        policy.update(focusActive: true, expanded: true)
-        policy.update(focusActive: true, expanded: true)
-        check("a paused active timer keeps its Focus target", policy.targets == [.ai, .sessions, .focus])
-        policy.update(focusActive: false, expanded: true)
-        check("a finishing timer cannot move an open Focus target", policy.targets == [.ai, .sessions, .focus])
-        policy.update(focusActive: false, expanded: false)
-        check("closing restores Mac after Focus finishes", policy.targets == [.ai, .sessions, .mac])
-        policy.update(focusActive: true, expanded: true)
-        check("opening snapshots the current Focus state", policy.targets == [.ai, .sessions, .focus])
-        for bottom in [false, true] {
-            let extent = bottom ? RailGeometry.bottomWidth : RailGeometry.height
-            check("positions before the \(bottom ? "bar" : "rail") clamp to its first target",
-                  RailGeometry.nearestSlot(to: -1000, bottom: bottom) == 0)
-            check("positions after the \(bottom ? "bar" : "rail") clamp to its last target",
-                  RailGeometry.nearestSlot(to: extent + 1000, bottom: bottom) == RailGeometry.count - 1)
-            for index in 0..<RailGeometry.count {
-                let center = RailGeometry.center(index, bottom: bottom)
-                check("\(bottom ? "bottom" : "side") target \(index) resolves across its whole hit area",
-                      [-RailGeometry.slot / 2 + 0.01, 0, RailGeometry.slot / 2 - 0.01].allSatisfy {
-                          RailGeometry.nearestSlot(to: center + $0, bottom: bottom) == index
-                      })
-                check("target \(index) fits inside the \(bottom ? "bar" : "rail")",
-                      center - RailGeometry.slot / 2 >= 0 && center + RailGeometry.slot / 2 <= extent)
+        check("before any choice the tab shows Claude, Sessions and Memory",
+              policy.targets == [claude, .sessions, .memory])
+        policy.update(chosen: chosen, focusClock: true, focusActive: false, expanded: false)
+        check("readouts follow Settings' choice and order", policy.targets == chosen)
+        policy.update(chosen: [], focusClock: true, focusActive: false, expanded: false)
+        check("choosing nothing still leaves Sessions", policy.targets == [.sessions])
+        policy.update(chosen: chosen + [.cpu, .provider("grok")], focusClock: true, focusActive: false, expanded: false)
+        check("the tab never grows past five readouts", policy.targets.count == RailGeometry.maxCount)
+        policy.update(chosen: chosen, focusClock: true, focusActive: false, expanded: false)
+        policy.update(chosen: chosen, focusClock: true, focusActive: false, expanded: true)
+        policy.update(chosen: chosen, focusClock: true, focusActive: true, expanded: true)
+        check("Focus starting cannot move an open readout", policy.targets == chosen)
+        policy.update(chosen: chosen, focusClock: true, focusActive: true, expanded: false)
+        check("closing brings running Focus into the last slot",
+              policy.targets == [claude, codex, .sessions, .focus])
+        policy.update(chosen: chosen, focusClock: true, focusActive: true, expanded: true)
+        policy.update(chosen: chosen, focusClock: true, focusActive: false, expanded: true)
+        check("a finishing timer cannot move an open Focus readout",
+              policy.targets == [claude, codex, .sessions, .focus])
+        policy.update(chosen: chosen, focusClock: true, focusActive: false, expanded: false)
+        check("closing restores the last readout after Focus finishes", policy.targets == chosen)
+        policy.update(chosen: chosen, focusClock: false, focusActive: true, expanded: false)
+        check("with the Focus clock off a timer leaves the readouts alone", policy.targets == chosen)
+        policy.update(chosen: chosen, focusClock: true, focusActive: false, expanded: true)
+        policy.update(chosen: [claude, .sessions], focusClock: true, focusActive: false, expanded: true)
+        check("a new choice waits until the card closes", policy.targets == chosen)
+        policy.update(chosen: [claude, .sessions], focusClock: true, focusActive: false, expanded: false)
+        check("closing applies the new choice", policy.targets == [claude, .sessions])
+
+        let saved = RailGeometry.count
+        defer { RailGeometry.count = saved }
+        for count in 1...RailGeometry.maxCount {
+            RailGeometry.count = count
+            check("\(count) readouts: the side footprint keeps equal room around them",
+                  RailGeometry.height == RailGeometry.endInset * 2 + CGFloat(count) * RailGeometry.slot)
+            for bottom in [false, true] {
+                let extent = bottom ? RailGeometry.bottomWidth : RailGeometry.height
+                for index in 0..<count {
+                    let center = RailGeometry.center(index, bottom: bottom)
+                    check("\(count) readouts: \(bottom ? "bottom" : "side") slot \(index) fits inside",
+                          center - RailGeometry.slot / 2 >= 0 && center + RailGeometry.slot / 2 <= extent)
+                }
             }
         }
+        RailGeometry.count = chosen.count
         for (displayIndex, visible) in displays.enumerated() {
             for side in RailGeometry.Side.allCases {
                 for fraction: CGFloat in [0, 0.5, 1] {

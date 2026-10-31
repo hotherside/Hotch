@@ -2,6 +2,18 @@
 
 Notable user-facing changes are recorded here.
 
+## Unreleased
+
+- macOS: four tabs instead of six, shown as symbols beside the page's name. **Hotch** is home: usage, CPU, memory and thermals, a one-click Focus start and the last two clipboard items. **AI** puts each provider's plan windows above the sessions running on it. **Mac** is unchanged. **Desk** holds Focus, the clipboard and Backpack mode.
+- macOS: a Claude Code session shows the step it is on and how long that step has run, and a session waiting on you shows the command it wants approved. Codex sessions keep their project line.
+- macOS: an alert on the screen-edge tab is now a label beside the tab instead of a bar growing out of it, and the sessions ring turns amber while a session waits on you.
+- macOS: the screen-edge tab is one control. Hovering tints the whole tab and opens the card; a click keeps it open, also when it opened on hover, and a second click closes it without the hover reopening it. Its readouts no longer highlight or switch pages one by one, since the card's tabs do that.
+- macOS: the edge tab shows a usage ring for each AI provider, so Claude and Codex both appear, and Settings → Where Hotch lives chooses its readouts: Claude, Codex, Sessions, Memory and CPU, one slot each, and whether a running Focus timer takes the last slot.
+- macOS: switching tabs swaps the page in one frame while the card's height eases to fit. The page no longer blanks or cross-fades, the card no longer drops off its anchor when it grows, and clicking tabs quickly can no longer cut off the bottom of the card.
+- macOS: an available update is a green button at the bottom left of every tab.
+- macOS: Backpack mode lives on the Desk tab; the footer shows it only while it is on.
+- macOS: amber and clay status words are darker in light mode, so small text clears 4.5:1 contrast.
+
 ## 2.4.0
 
 - macOS: Hotch now keeps itself up to date with Sparkle. Once a day it checks for a new version and shows the release notes with Install, Remind Me Later and Skip This Version. Check for Updates… is in Settings → App updates and the Hotch menu.

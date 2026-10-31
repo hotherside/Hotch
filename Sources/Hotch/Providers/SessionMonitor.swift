@@ -68,6 +68,27 @@ struct AgentSession: Sendable, Hashable, Identifiable {
     /// The session's own process, for Claude Code sessions: following its
     /// parents finds the app it runs in (`SessionJump`).
     var pid: Int32? = nil
+    /// The tool call in flight: what a working session is doing this second,
+    /// or what a needs-input session wants approved. Nil between calls and
+    /// for Codex, whose rollouts are compressed and not read here.
+    var step: AgentStep? = nil
+}
+
+/// One tool call, as a session row names it.
+struct AgentStep: Sendable, Hashable {
+    /// The agent's own description of the call when it gave one ("Run the
+    /// unit tests"), otherwise the tool and its target ("Read Package.swift").
+    /// Shown as written: rewriting the agent's words into another tense would
+    /// be a guess dressed up as a reading.
+    var label: String
+    /// The shell command itself, for a Bash call. A permission prompt is about
+    /// the command rather than its description, so needs-input rows show this.
+    var command: String? = nil
+    /// When the call was made; the running step's timer counts from here.
+    var startedAt: Date?
+    /// The SF Symbol for the kind of tool: a terminal for shell commands, a
+    /// pencil for edits.
+    var symbol: String = "wrench.and.screwdriver"
 }
 
 // MARK: - Store
@@ -250,6 +271,7 @@ enum SessionScanner {
                 claudeActivity(transcript: $0, lines: tail ?? [], now: now)
             } ?? .working
             let context = transcript.flatMap { claudeContext(transcript: $0, lines: tail ?? []) }
+            let step = activity == .waiting ? nil : claudeStep(lines: tail ?? [])
 
             // A name the person gave (or Claude Code chose with them) is the
             // name. A derived one ("hotch-01") is the folder, so the
@@ -274,7 +296,8 @@ enum SessionScanner {
                 waitingFor: activity == .needsInput ? waitingFor : nil,
                 surface: surfaceName(entrypoint: dict["entrypoint"] as? String),
                 model: ClaudeModelCatalog.displayName(for: context?.model),
-                pid: Int32(truncatingIfNeeded: pid)
+                pid: Int32(truncatingIfNeeded: pid),
+                step: step
             ))
         }
 
@@ -436,6 +459,96 @@ enum SessionScanner {
             // event, and it writes nothing while generating.
             return age < midTurnLimit ? .working : .waiting
         }
+    }
+
+    /// How many tail lines the step search walks back through before giving up.
+    static let stepScanDepth = 60
+
+    /// The tool call the session is in the middle of, from the same tail.
+    ///
+    /// The newest tool call no result has answered yet: the step running now,
+    /// or, for a session on a permission prompt, the step it wants approved.
+    /// Claude Code writes each content block as its own line, so parallel
+    /// calls arrive as consecutive assistant lines and the walk continues past
+    /// answered ones to an older call that is still open. It stops at the
+    /// person's own prompt, since nothing before it can still be running.
+    ///
+    /// Nil between calls, while the model writes and there is no step to name.
+    /// The row then keeps its ordinary subtitle instead of pinning the last
+    /// finished call on as if it were still going, timer and all.
+    static func claudeStep(lines: [Data]) -> AgentStep? {
+        var answered: Set<String> = []
+        var examined = 0
+        for line in lines.reversed() {
+            examined += 1
+            if examined > stepScanDepth { break }
+            guard let dict = JSONWalk.object(line) as? [String: Any],
+                  let type = dict["type"] as? String,
+                  type == "assistant" || type == "user",
+                  dict["isSidechain"] as? Bool != true,
+                  let message = dict["message"] as? [String: Any] else { continue }
+            let blocks = (message["content"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }
+
+            if type == "user" {
+                // Claude Code's own injected context is not the person speaking.
+                if dict["isMeta"] as? Bool == true { continue }
+                let results = blocks.filter { $0["type"] as? String == "tool_result" }
+                if results.isEmpty { return nil }
+                for result in results {
+                    if let id = result["tool_use_id"] as? String { answered.insert(id) }
+                }
+                continue
+            }
+            for call in blocks.reversed() where call["type"] as? String == "tool_use" {
+                guard let id = call["id"] as? String, !answered.contains(id) else { continue }
+                return step(for: call, at: DateParse.date(from: dict["timestamp"]))
+            }
+        }
+        return nil
+    }
+
+    /// Names one `tool_use` block the way the row shows it.
+    static func step(for call: [String: Any], at date: Date?) -> AgentStep? {
+        guard let name = call["name"] as? String else { return nil }
+        let input = call["input"] as? [String: Any] ?? [:]
+        func text(_ key: String) -> String? { JSONWalk.string(input[key]).flatMap(stepText) }
+        func file(_ key: String) -> String? { text(key).map { ($0 as NSString).lastPathComponent } }
+        func labelled(_ label: String?, _ symbol: String) -> AgentStep? {
+            label.map { AgentStep(label: $0, startedAt: date, symbol: symbol) }
+        }
+
+        switch name {
+        case "Bash":
+            let command = text("command")
+            guard let label = text("description") ?? command else { return nil }
+            return AgentStep(label: label, command: command, startedAt: date, symbol: "terminal")
+        case "Read": return labelled(file("file_path").map { "Read \($0)" }, "doc.text")
+        case "Edit", "MultiEdit": return labelled(file("file_path").map { "Edit \($0)" }, "pencil")
+        case "Write": return labelled(file("file_path").map { "Write \($0)" }, "pencil")
+        case "NotebookEdit": return labelled(file("notebook_path").map { "Edit \($0)" }, "pencil")
+        case "Grep": return labelled(text("pattern").map { "Search for \u{201C}\($0)\u{201D}" }, "magnifyingglass")
+        case "Glob": return labelled(text("pattern").map { "Find \($0)" }, "magnifyingglass")
+        case "WebFetch":
+            return labelled(text("url").map { "Fetch \(URL(string: $0)?.host ?? $0)" }, "globe")
+        case "WebSearch": return labelled(text("query").map { "Search the web for \u{201C}\($0)\u{201D}" }, "globe")
+        case "Task", "Agent": return labelled(text("description") ?? "Run an agent", "person.2")
+        default:
+            // MCP tools arrive as mcp__<server>__<tool>.
+            let parts = name.components(separatedBy: "__")
+            if parts.count >= 3, parts[0] == "mcp" {
+                let tool = Fmt.humanize(key: parts[2...].joined(separator: "_"))
+                return labelled("\(tool) \u{00B7} \(Fmt.humanize(key: parts[1]))", "puzzlepiece.extension")
+            }
+            return labelled(Fmt.humanize(key: name), "wrench.and.screwdriver")
+        }
+    }
+
+    /// One line, trimmed and capped: rows truncate, but a pasted heredoc should
+    /// not travel through the store as forty lines.
+    private static func stepText(_ raw: String) -> String? {
+        let collapsed = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        return collapsed.count > 200 ? String(collapsed.prefix(200)) + "\u{2026}" : collapsed
     }
 
     /// The vendor's own title for the session — the name the user sees in

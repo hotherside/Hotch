@@ -1,79 +1,71 @@
 import AppKit
 import SwiftUI
 
-/// The panel's sections, in tab and swipe order (Hotch 2).
+/// The panel's sections, in tab and swipe order.
 ///
-/// **Now** is home: one glance at the AI limits, the agents and the Mac. The
-/// others are depth on demand. Usage and forecast became one section (AI), the
-/// forecast drawn onto the rings themselves; sessions became Agents; This Mac
-/// is new.
+/// **Hotch** is home: usage, the Mac's three vitals and the desk tools at a
+/// glance, plus whichever session is waiting on you. The others are depth on
+/// demand. AI carries each provider's plan windows with its sessions nested
+/// beneath, since both answer one question: can the agents keep going. Desk
+/// holds the tools you switch on, Focus, the clipboard and Backpack mode.
 enum PanelPage: Int, CaseIterable, Sendable {
-    case now
+    case home
     case ai
-    case agents
     case mac
-    case focus
-    case clipboard
+    case desk
 
     var title: String {
         switch self {
-        case .now: return "Now"
+        case .home: return "Hotch"
         case .ai: return "AI"
-        case .agents: return "Sessions"
         case .mac: return "Mac"
-        case .focus: return "Focus"
-        case .clipboard: return "Clipboard"
+        case .desk: return "Desk"
         }
     }
 
     /// The longer name the left wing uses.
     var wingTitle: String {
         switch self {
-        case .now: return "Now"
-        case .ai: return "AI usage"
-        case .agents: return "Active sessions"
+        case .home: return "Hotch"
+        case .ai: return "AI and sessions"
         case .mac: return "This Mac"
-        case .focus: return "Focus"
-        case .clipboard: return "Clipboard"
+        case .desk: return "Desk"
         }
     }
 
+    /// The tab's symbol. Home draws the Hotch mark instead (`HotchGlyph`);
+    /// this is its stand-in wherever only a symbol name will do.
     var symbol: String {
         switch self {
-        case .now: return "gauge.with.dots.needle.67percent"
+        case .home: return "circle.circle"
         case .ai: return "sparkles"
-        case .agents: return "terminal"
-        case .mac: return "cpu"
-        case .focus: return "timer"
-        case .clipboard: return "list.clipboard"
+        case .mac: return "laptopcomputer"
+        case .desk: return "tray"
         }
     }
 
     /// Height of this section's content in the notch panel, between the tab row
     /// and the footer. **A property of the section, never of the data**: five
     /// sessions or six providers scroll inside it rather than stretching the
-    /// panel. Home also reserves room for Backpack discovery; switching
-    /// sections moves the bottom edge on the same spring as everything else.
+    /// panel. Switching sections moves the bottom edge on the same spring as
+    /// everything else.
     var panelContentHeight: CGFloat {
         switch self {
-        case .now: return 336
-        case .ai: return 248
-        case .agents: return 262
+        case .home: return 336
+        case .ai: return 322
         case .mac: return 322
-        case .focus: return 158
-        case .clipboard: return 204
+        case .desk: return 336
         }
     }
 
-    /// Parses `--snapshot-page` and keeps the old names working.
+    /// Parses `--snapshot-page`, and keeps the six old section names working
+    /// by sending each to the tab that now holds it.
     init?(argument: String) {
         switch argument {
-        case "now", "home": self = .now
-        case "ai", "usage", "forecast": self = .ai
-        case "agents", "sessions": self = .agents
-        case "mac", "system": self = .mac
-        case "focus": self = .focus
-        case "clipboard", "clip": self = .clipboard
+        case "home", "hotch", "now": self = .home
+        case "ai", "usage", "forecast", "agents", "sessions": self = .ai
+        case "mac", "system", "computer": self = .mac
+        case "desk", "focus", "clipboard", "clip": self = .desk
         default: return nil
         }
     }
@@ -146,7 +138,7 @@ final class PanelModel: ObservableObject {
 
     /// Which page is showing. Sticky across open and close on purpose: someone
     /// keeping an eye on a session re-opens to the page they were watching.
-    @Published var page: PanelPage = .now
+    @Published var page: PanelPage = .home
 
     /// The This Mac tile opened in place, if any.
     @Published var macDetail: SystemDetailKind?
@@ -160,7 +152,7 @@ final class PanelModel: ObservableObject {
 
     /// The section the shape is currently sized for.
     var contentHeight: CGFloat {
-        backpackCard ? PanelPage.now.panelContentHeight : page.panelContentHeight
+        backpackCard ? PanelPage.home.panelContentHeight : page.panelContentHeight
     }
 
     /// Visible body height for the current section, from the top of the screen.
@@ -507,9 +499,11 @@ enum NotchTheme {
     /// nudge, and red is reserved for a window that is nearly spent.
     ///
     /// Dynamic, because the same amber that glows on near-black is nearly
-    /// unreadable on white — the light side takes a deep amber instead.
+    /// unreadable on white — the light side takes a deep amber instead. Deep
+    /// enough for 11pt words: the earlier (0.68, 0.40, 0.02) measured 4.0:1
+    /// on the light card, short of the 4.5:1 small text needs.
     static let attention = Dynamic.color(dark: Dynamic.rgb(1.0, 0.72, 0.30),
-                                         light: Dynamic.rgb(0.68, 0.40, 0.02))
+                                         light: Dynamic.rgb(0.54, 0.31, 0.0))
 
     /// Page indicator dots. Sized to be clicked, not merely seen — these are
     /// the only page navigation for anyone not swiping, and 4.5pt in a 14pt
@@ -727,6 +721,14 @@ struct ProviderIdentity {
     var accent: Color {
         Dynamic.color(dark: Dynamic.rgb(red, green, blue),
                       light: Dynamic.rgb(lightRGB.red, lightRGB.green, lightRGB.blue))
+    }
+
+    /// The accent for small words ("working"). Rings and marks keep `accent`;
+    /// on white, clay's published value is 3.5:1, so words take it a fifth
+    /// deeper, which clears 4.5:1 without turning it brown.
+    var textAccent: Color {
+        Dynamic.color(dark: Dynamic.rgb(red, green, blue),
+                      light: Dynamic.rgb(lightRGB.red * 0.8, lightRGB.green * 0.8, lightRGB.blue * 0.8))
     }
 
     /// The far end of meter gradients, roughly 20 percent lighter unless the

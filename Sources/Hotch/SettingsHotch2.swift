@@ -6,6 +6,7 @@ import SwiftUI
 struct HotchMoreSettings: View {
     @ObservedObject private var prefs = HotchPrefs.shared
     @ObservedObject private var backpack = BackpackManager.shared
+    @ObservedObject private var settings = AppSettings.shared
     var onPreviewAlert: () -> Void = {}
 
     var body: some View {
@@ -30,12 +31,29 @@ struct HotchMoreSettings: View {
                     .fixedSize()
                 }
                 .padding(.top, 8)
+                Text("Show on the tab")
+                    .font(.system(size: 12))
+                    .padding(.top, 10)
+                HStack(spacing: 14) {
+                    ForEach(HotchPrefs.RailReadout.allCases) { readout in
+                        Toggle(readout.label, isOn: railBinding(readout))
+                            .disabled(!canToggle(readout))
+                            .help(railHelp(readout))
+                    }
+                }
+                .font(.system(size: 12))
+                .toggleStyle(.checkbox)
+                .padding(.top, 6)
+                Toggle("A running Focus timer takes the last slot", isOn: $prefs.railFocusClock)
+                    .font(.system(size: 12))
+                    .toggleStyle(.checkbox)
+                    .padding(.top, 6)
             }
             Toggle("Open the card with ⌥⌘H", isOn: $prefs.shortcutEnabled)
                 .font(.system(size: 12))
                 .toggleStyle(.checkbox)
                 .padding(.top, 8)
-            note("The edge tab shows AI usage, Sessions and Mac activity. An active Focus clock takes the Mac slot until it ends. Hover to peek; click to keep it open. All six sections stay available in the card's tabs. Notch brings back the original top-of-screen view. Pill and orb can sit anywhere.")
+            note("The edge tab shows what you tick above, one slot each, with a ring of usage for each AI provider. Hover the tab to peek at the card; click it to keep the card open. The card's own tabs, Hotch, AI, Mac and Desk, take you everywhere else. Notch brings back the original top-of-screen view. Pill and orb can sit anywhere.")
 
             header("Menu bar").padding(.top, 18)
             Text("Show beside the usage number")
@@ -79,6 +97,33 @@ struct HotchMoreSettings: View {
                 backpackButton
             }
             note("Close the lid on the go and your agents keep running. macOS only lets an administrator stop lid-close sleep, so Hotch uses a small helper you approve once. It always restores normal sleep: when your agents finish, at \(Int(BackpackPolicy.batteryFloor))% battery, if the Mac runs hot, after \(Int(BackpackPolicy.maxHours)) hours, or if Hotch quits. The screen locks as the lid closes, Low Power Mode keeps it cool while it runs, and opening the lid again ends it with a short summary.")
+        }
+    }
+
+    private func railBinding(_ readout: HotchPrefs.RailReadout) -> Binding<Bool> {
+        Binding(get: { prefs.railReadouts.contains(readout) },
+                set: { on in
+                    if on { prefs.railReadouts.insert(readout) } else { prefs.railReadouts.remove(readout) }
+                })
+    }
+
+    /// A provider's readout needs the provider switched on, and the last
+    /// readout left on stays on, so the tab is never empty.
+    private func canToggle(_ readout: HotchPrefs.RailReadout) -> Bool {
+        if let id = readout.providerID, !settings.isEnabled(id) { return false }
+        let shown = prefs.railReadouts.filter { $0.providerID.map(settings.isEnabled) ?? true }
+        return !(shown == [readout])
+    }
+
+    private func railHelp(_ readout: HotchPrefs.RailReadout) -> String {
+        if let id = readout.providerID, !settings.isEnabled(id) {
+            return "Switch \(readout.label) on under AI providers to show its usage here"
+        }
+        switch readout {
+        case .claude, .codex: return "\(readout.label)'s tightest plan window"
+        case .sessions: return "Live agent sessions; amber while one needs you"
+        case .memory: return "Memory used, coloured by pressure"
+        case .cpu: return "CPU use"
         }
     }
 

@@ -39,6 +39,20 @@ enum AnchorMotion {
     static let poll: TimeInterval = 0.025
 }
 
+/// Where the pointer is, which buttons are down, and clicks in other apps.
+/// The edge tab reads all three through this, so `--check-card-motion` can
+/// script hovers and clicks without moving the real pointer or watching the
+/// person's real clicks.
+@MainActor
+struct PointerSource {
+    var location: () -> CGPoint = { NSEvent.mouseLocation }
+    var buttons: () -> Int = { NSEvent.pressedMouseButtons }
+    /// Calls back on each click outside Hotch; the token removes the watch.
+    var watchClicks: (@escaping () -> Void) -> Any? = { handler in
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in handler() }
+    }
+}
+
 // MARK: - The card window
 
 @MainActor
@@ -101,7 +115,41 @@ struct CardRoot: View {
         // The card stays attached to the tab. Fading in place avoids the
         // text zoom and blur that made opening feel like a second movement.
         .animation(HMotion.reduceMotion ? nil : .easeOut(duration: 0.16), value: presence.visible)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: presence.alignment)
+        .modifier(PinnedToCorner(alignment: presence.alignment))
+    }
+}
+
+/// Holds the card against the window corner it grows from, whatever the
+/// window's size. A flexible frame grew past a window that had not yet
+/// caught up with a taller page, and the hosting view centred the overflow
+/// for that one pass. The page's height animation then started from the
+/// centred spot, so the card's anchored edge dropped and slid back on every
+/// switch to a taller page. This always takes exactly the window's size and
+/// lets the card overflow on the side away from its corner, while still
+/// reporting the card's own size as the window's ideal one.
+struct PinnedToCorner: ViewModifier {
+    var alignment: Alignment
+    func body(content: Content) -> some View {
+        PinnedLayout(alignment: alignment) { content }
+    }
+}
+
+private struct PinnedLayout: Layout {
+    var alignment: Alignment
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let ideal = subviews.first?.sizeThatFits(.unspecified) ?? .zero
+        return CGSize(width: proposal.width ?? ideal.width, height: proposal.height ?? ideal.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let card = subviews.first else { return }
+        let size = card.sizeThatFits(.unspecified)
+        let across: CGFloat = alignment.horizontal == .leading ? 0 : alignment.horizontal == .trailing ? 1 : 0.5
+        let down: CGFloat = alignment.vertical == .top ? 0 : alignment.vertical == .bottom ? 1 : 0.5
+        card.place(at: CGPoint(x: bounds.minX + (bounds.width - size.width) * across,
+                               y: bounds.minY + (bounds.height - size.height) * down),
+                   proposal: ProposedViewSize(size))
     }
 }
 
@@ -161,7 +209,7 @@ final class CardPanelController {
     var isShown: Bool { presence.visible }
     var frame: CGRect { panel.frame }
     /// A focused text field (the focus timer's task name) holds the card open.
-    var isEditing: Bool { panel.isKeyWindow && deps.pages.page == .focus }
+    var isEditing: Bool { panel.isKeyWindow && deps.pages.page == .desk }
 
     init(deps: CardDeps) {
         self.deps = deps
@@ -267,10 +315,13 @@ final class CardPanelController {
         shrinkWork = nil
         guard target != panel.frame else { return }
         shadow.follow()
-        if size.height < old.height - 0.5 {
-            // The viewport retains the outgoing page through its fade. Once
-            // it reports the smaller size, one render turn is enough; an
-            // extra rail-morph delay leaves an oversized shadow behind.
+        if target.height < panel.frame.height - 0.5 {
+            // A smaller page eases the card's height down over the section
+            // motion. The window follows once it has, so it never clips the
+            // card on the way down; the shadow tracks what is drawn meanwhile.
+            // Measured against the window, not the last page: a click that
+            // lands mid-shrink on a page between the two heights is still a
+            // shrink for a window the card has not finished leaving.
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, self.presence.visible, let placement = self.placement else { return }
@@ -291,7 +342,7 @@ final class CardPanelController {
     /// The card takes the keyboard only for the focus timer's text field, or
     /// when the shortcut pinned it (so Esc can close it).
     private func syncKeyable() {
-        panel.keyable = presence.visible && (deps.pages.page == .focus || pinned)
+        panel.keyable = presence.visible && (deps.pages.page == .desk || pinned)
         if !panel.keyable && panel.isKeyWindow { panel.resignKey() }
     }
 }
@@ -307,10 +358,13 @@ final class RailState: ObservableObject {
     @Published var dragging = false
     /// How far below the window's top the current shape is drawn.
     @Published var inset: CGFloat = 0
-    /// The status target under the pointer, highlighted without changing pages.
-    @Published var hovered: PanelPage?
-    /// The three status targets keep their identities while a card is open.
+    /// The readouts Settings chose, held steady while a card is open.
     @Published var readouts = RailSlotPolicy().targets
+    /// The pointer is over the tab (or pressing the edge beside it). Set from
+    /// the same pointer watch that opens the card, so the two never disagree
+    /// and the tint cannot outlive the pointer the way a view's own hover
+    /// tracking can while its window resizes.
+    @Published var hovering = false
 }
 
 /// Refreshes a window's shadow every frame while SwiftUI animates what it
@@ -357,9 +411,12 @@ final class ShadowFollower {
 @MainActor
 final class RailController {
     /// The shapes as drawn: the resting tab, the open column, an alert.
-    static let tabSize = CGSize(width: RailGeometry.width, height: RailGeometry.height)
-    static let columnSize = tabSize
-    static var alertSize: CGSize { CGSize(width: tabSize.width + RailView.bubbleWidth, height: tabSize.height) }
+    static var tabSize: CGSize { CGSize(width: RailGeometry.width, height: RailGeometry.height) }
+    static var columnSize: CGSize { tabSize }
+    /// An alert keeps the tab's shape. The message is a label in a window of
+    /// its own beside the tab (`DockLabel`), the way the Dock names an app: a
+    /// bar grown out of the narrow tab read as a finger raised at the screen.
+    static var alertSize: CGSize { tabSize }
     /// Lying along the bottom it is a second, smaller Dock in the space beside
     /// the real one: the same height and the same gap under it, worked out
     /// from the strip macOS keeps clear for the Dock (51pt here: a 44pt Dock
@@ -402,8 +459,13 @@ final class RailController {
     private var clickMonitor: Any?
     private var slotPolicy = RailSlotPolicy()
     private var focusObservation: AnyCancellable?
+    private var readoutObservation: AnyCancellable?
+    /// Set by a click that closed the card: hovering waits for the pointer to
+    /// leave the tab before it may open the card again.
+    private var holdUntilExit = false
     /// Along the bottom an alert is a label above the bar, in its own window.
     private let label = DockLabel()
+    var pointer = PointerSource()
 
     init(card: CardPanelController) {
         self.card = card
@@ -423,10 +485,8 @@ final class RailController {
         host = FirstMouseHostingView(rootView: RailView(
             state: state, pages: deps.pages, store: deps.store, sessionStore: deps.sessionStore,
             system: deps.system, focus: deps.focus,
-            onSelect: { [weak self] page in self?.select(page) },
+            onTap: { [weak self] in self?.tapped() },
             onDrag: { [weak self] phase in self?.drag(phase) },
-            onHover: { [weak self] page, inside in self?.hover(page, inside) },
-            onAlertTap: { [weak self] alert in self?.card.deps.actOnAlert(alert) },
             onMove: { side in HotchPrefs.shared.edgeSide = side },
             onOpenSettings: deps.openSettings))
         host.autoresizingMask = [.width, .height]
@@ -441,11 +501,43 @@ final class RailController {
         focusObservation = deps.focus.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.refreshReadouts() }
+        // Choosing readouts in Settings, or switching a provider off, changes
+        // what the tab shows and how long it is.
+        readoutObservation = Publishers.Merge(HotchPrefs.shared.objectWillChange,
+                                              AppSettings.shared.objectWillChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.refreshReadouts() }
+    }
+
+    /// Settings' choice, less any provider that is switched off.
+    private var chosenReadouts: [RailSlotPolicy.Target] {
+        HotchPrefs.RailReadout.allCases.compactMap { readout in
+            guard prefs.railReadouts.contains(readout) else { return nil }
+            if let id = readout.providerID {
+                return AppSettings.shared.isEnabled(id) ? .provider(id) : nil
+            }
+            switch readout {
+            case .sessions: return .sessions
+            case .memory: return .memory
+            case .cpu: return .cpu
+            case .claude, .codex: return nil
+            }
+        }
     }
 
     private func refreshReadouts() {
-        slotPolicy.update(focusActive: card.deps.focus.isRunning, expanded: state.phase == .expanded)
+        slotPolicy.update(chosen: chosenReadouts, focusClock: prefs.railFocusClock,
+                          focusActive: card.deps.focus.isRunning, expanded: state.phase == .expanded)
         if state.readouts != slotPolicy.targets { state.readouts = slotPolicy.targets }
+        // One slot per readout: a new count changes the tab's length, so the
+        // windows are resized in place, keeping its spot on the edge.
+        guard RailGeometry.count != state.readouts.count else { return }
+        RailGeometry.count = state.readouts.count
+        guard dragStart == nil, !landing, state.phase != .alert else { return }
+        state.inset = inset(for: state.phase)
+        panel.setFrame(panelFrame(for: state.phase), display: true)
+        if state.phase == .expanded { card.reposition() }
+        shadow.follow(for: 0.05)
     }
 
     /// The display the rail was put on, or the main display.
@@ -460,6 +552,7 @@ final class RailController {
 
     private func applyVisibility() {
         let hidden = stepAside && state.phase == .collapsed && !state.dragging && !landing
+        guard !NotchPanel.unseen else { return }
         panel.ignoresMouseEvents = hidden
         guard (panel.alphaValue < 0.5) != hidden else { return }
         NSAnimationContext.runAnimationGroup { context in
@@ -507,16 +600,12 @@ final class RailController {
     /// The resting tab or bar on screen. Welcome points at it when done.
     var restingFrame: CGRect { frame(for: Self.size(for: .collapsed, side: state.side)) }
     private var openFrame: CGRect { frame(for: Self.size(for: .expanded, side: state.side)) }
+    /// The alert's label, for the motion check's pointer.
+    var alertLabelFrame: CGRect { label.frame }
 
-    /// The speaking bubble on screen, beside the readout it is about (or,
-    /// along the bottom, the line the bar grows on top).
-    private var bubbleFrame: CGRect {
-        if state.side == .bottom { return label.frame }
-        let tab = frame(for: Self.tabSize)
-        let w = RailView.bubbleWidth, h = RailView.bubbleHeight
-        let y = tab.maxY - RailView.bubbleCenter(for: state.alert) - h / 2
-        return CGRect(x: state.side == .right ? tab.minX - w : tab.maxX, y: y, width: w, height: h)
-    }
+    /// The alert's label on screen, beside the readout it is about (or,
+    /// along the bottom, above the bar).
+    private var bubbleFrame: CGRect { label.frame }
 
     private func inset(for phase: RailState.Phase) -> CGFloat {
         guard state.side != .bottom else { return 0 }
@@ -541,11 +630,12 @@ final class RailController {
         timer?.invalidate()
         timer = nil
         settleWork?.cancel()
-        state.hovered = nil
         removeClickMonitor()
         card.hide()
         label.hide()
         panel.orderOut(nil)
+        state.hovering = false
+        holdUntilExit = false
         card.deps.system.setDemand(.idle, for: "rail")
     }
 
@@ -591,10 +681,16 @@ final class RailController {
         refreshReadouts()
         shadow.follow()
         applyVisibility()
-        if state.side == .bottom, phase == .alert, let alert = state.alert, let screen {
-            let bar = restingFrame
-            label.show(alert, over: bar.minX + RailView.barCenter(RailView.readoutIndex(for: alert)),
-                       above: bar.maxY + 6, on: screen.frame)
+        if phase == .alert, let alert = state.alert, let screen {
+            let tab = restingFrame
+            if state.side == .bottom {
+                label.show(alert, over: tab.minX + RailView.barCenter(for: alert, readouts: state.readouts),
+                           above: tab.maxY + 6, on: screen.frame)
+            } else {
+                label.show(alert, beside: tab,
+                           centerY: tab.maxY - RailView.bubbleCenter(for: alert, readouts: state.readouts),
+                           tabOnRight: state.side == .right, on: screen.frame)
+            }
         } else {
             label.hide()
         }
@@ -640,9 +736,32 @@ final class RailController {
 
     func collapse() {
         removeClickMonitor()
-        state.hovered = nil
         card.hide()
         set(.collapsed)
+    }
+
+    /// A click on the tab. Closed, it opens the card and keeps it open. A
+    /// card that opened on hover is kept open, as Settings promises. Only a
+    /// card already kept open closes, and then a hover cannot reopen it until
+    /// the pointer has left the tab, or the click would undo itself.
+    func tapped() {
+        guard dragStart == nil, !landing else { return }
+        switch state.phase {
+        case .expanded where card.pinned:
+            holdUntilExit = true
+            collapse()
+        case .expanded:
+            card.pinned = true
+            installClickMonitor()
+            Haptics.tap()
+        case .collapsed, .alert:
+            expand(pinned: true)
+        }
+    }
+
+    private func setHovering(_ over: Bool) {
+        guard state.hovering != over else { return }
+        withAnimation(.easeOut(duration: 0.12)) { state.hovering = over }
     }
 
     func toggle() {
@@ -650,54 +769,17 @@ final class RailController {
         state.phase == .expanded ? collapse() : expand(pinned: true)
     }
 
-    private func select(_ page: PanelPage) {
-        let wasCollapsed = state.phase != .expanded
-        if wasCollapsed {
-            openSection(page)
-            expand(pinned: true)
-        } else {
-            card.pinned = true
-            installClickMonitor()
-            guard card.deps.pages.page != page || card.deps.pages.macDetail != nil || card.deps.pages.backpackCard else { return }
-            card.deps.pages.select(page)
-            Haptics.tap()
-        }
-    }
-
-    private func openSection(_ page: PanelPage) {
-        card.deps.pages.select(page)
-    }
-
-    /// Hovering a status opens its section overview. Details remain an
-    /// explicit choice, consistent with the card's navigation tabs.
-    private func openOnReadout(at point: CGPoint) {
-        let tab = restingFrame
-        let position = state.side == .bottom ? point.x - tab.minX : tab.maxY - point.y
-        let index = RailGeometry.nearestSlot(to: position, bottom: state.side == .bottom)
-        openSection(state.readouts[index].page)
-    }
-
-    /// Once open, hover only highlights. Moving toward the card must not
-    /// change the page that was just opened; navigation is a deliberate click.
-    private func hover(_ page: PanelPage, _ inside: Bool) {
-        if inside {
-            withAnimation(.easeOut(duration: 0.12)) { state.hovered = page }
-        } else if state.hovered == page {
-            withAnimation(.easeOut(duration: 0.12)) { state.hovered = nil }
-        }
-    }
-
     // MARK: Pointer
 
     private func tick() {
         guard !state.dragging, !landing, let screen else { return }
-        let point = NSEvent.mouseLocation
+        let point = pointer.location()
         let now = Date()
         switch state.phase {
         case .collapsed, .alert:
             // A held button means a grab, not a hover: leave the tab as it is
             // so the drag picks up what was pressed.
-            if NSEvent.pressedMouseButtons != 0 {
+            if pointer.buttons() != 0 {
                 insideSince = nil
                 return
             }
@@ -717,11 +799,15 @@ final class RailController {
             // about); resting on it does not open the card.
             let onAlert = state.phase == .alert && bubbleFrame.insetBy(dx: -2, dy: -4).contains(point)
             let onFace = tab.contains(point) && !(stepAside && state.phase == .collapsed)
-            if (onEdge || onFace) && !onAlert {
+            let over = (onEdge || onFace) && !onAlert
+            setHovering(over)
+            if holdUntilExit {
+                if !over { holdUntilExit = false }
+                insideSince = nil
+            } else if over {
                 if let since = insideSince {
                     let dwell = onEdge ? AnchorMotion.dwell : AnchorMotion.tabDwell
                     if now.timeIntervalSince(since) >= dwell {
-                        openOnReadout(at: point)
                         expand()
                     }
                 } else {
@@ -731,6 +817,7 @@ final class RailController {
                 insideSince = nil
             }
         case .expanded:
+            setHovering(false)
             let inside = openFrame.insetBy(dx: -8, dy: -10).contains(point)
                 || (card.isShown && (card.frame.insetBy(dx: -10, dy: -10).contains(point)
                     || RailGeometry.hoverBridgeContains(point, rail: openFrame, card: card.frame)))
@@ -766,6 +853,7 @@ final class RailController {
                                    width: size.width, height: size.height)
                 let grab = CGPoint(x: (mouse.x - shape.minX) / shape.width, y: (mouse.y - shape.minY) / shape.height)
                 dragStart = (grab, state.phase == .expanded, card.pinned)
+                setHovering(false)
                 settleWork?.cancel()
                 removeClickMonitor()
                 card.hide()
@@ -773,8 +861,7 @@ final class RailController {
                 panel.setFrame(shape, display: true)
                 withAnimation(AnchorMotion.morph) {
                     state.dragging = true
-                    state.hovered = nil
-                }
+                            }
                 shadow.follow()
             }
             guard let start = dragStart else { return }
@@ -834,7 +921,7 @@ final class RailController {
                 self.applyVisibility()
                 Haptics.tap()
                 guard reopen else { return }
-                if pinned || self.openFrame.insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation) {
+                if pinned || self.openFrame.insetBy(dx: -6, dy: -6).contains(self.pointer.location()) {
                     self.expand(pinned: pinned)
                 } else {
                     self.collapse()
@@ -868,10 +955,10 @@ final class RailController {
 
     private func installClickMonitor() {
         removeClickMonitor()
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        clickMonitor = pointer.watchClicks { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let point = NSEvent.mouseLocation
+                let point = self.pointer.location()
                 if !self.openFrame.contains(point) && !self.card.frame.contains(point) {
                     self.collapse()
                 }
@@ -885,17 +972,6 @@ final class RailController {
     }
 }
 
-extension RailSlotPolicy.Target {
-    var page: PanelPage {
-        switch self {
-        case .ai: return .ai
-        case .sessions: return .agents
-        case .mac: return .mac
-        case .focus: return .focus
-        }
-    }
-}
-
 struct RailView: View {
     enum DragPhase { case changed, ended }
 
@@ -905,14 +981,13 @@ struct RailView: View {
     @ObservedObject var sessionStore: SessionStore
     @ObservedObject var system: SystemMonitor
     var focus: FocusStore? = nil
-    let onSelect: (PanelPage) -> Void
+    /// The whole tab is one control: it opens and closes the card, which has
+    /// its own tabs for moving between pages.
+    let onTap: () -> Void
     let onDrag: (DragPhase) -> Void
-    var onHover: (PanelPage, Bool) -> Void = { _, _ in }
-    var onAlertTap: (LiveActivity) -> Void = { _ in }
     var onMove: (HotchPrefs.EdgeSide) -> Void = { _ in }
     var onOpenSettings: () -> Void = {}
     @ObservedObject private var settings = AppSettings.shared
-    @Namespace private var selection
     @Environment(\.snapshotRendering) private var snapshot
 
     private var right: Bool { state.side == .right }
@@ -939,27 +1014,34 @@ struct RailView: View {
     private var ringSize: CGFloat { Self.ring }
     private var ringLine: CGFloat { Self.ringLine }
 
-    /// Alerts map memory, AI and sessions onto the three fixed status slots.
-    private static let readoutSlots = [2, 0, 1]
-    static func ringCenter(_ index: Int) -> CGFloat {
-        RailGeometry.center(readoutSlots[min(2, max(0, index))])
-    }
-
-    static func bubbleCenter(for alert: LiveActivity?) -> CGFloat {
-        readoutIndex(for: alert).map(ringCenter) ?? RailController.tabSize.height / 2
-    }
-
-    static func readoutIndex(for alert: LiveActivity?) -> Int? {
+    /// The slot an alert is about, so its label sits level with it: sessions
+    /// for an agent, the provider for a plan limit, memory or CPU for the Mac.
+    static func slot(for alert: LiveActivity?, in readouts: [RailSlotPolicy.Target]) -> Int? {
         let key = alert?.key ?? ""
-        if key == "mem" || key == "focus" { return 0 }
-        if key.hasPrefix("limit-") { return 1 }
-        if key.hasPrefix("need-") || key.hasPrefix("done-") { return 2 }
-        return nil
+        let candidates: [RailSlotPolicy.Target]
+        if key.hasPrefix("need-") || key.hasPrefix("done-") {
+            candidates = [.sessions]
+        } else if key.hasPrefix("limit-") {
+            let provider = key.dropFirst("limit-".count).split(separator: "-").first.map(String.init) ?? ""
+            candidates = [.provider(provider)]
+        } else if key == "mem" {
+            candidates = [.memory]
+        } else if key == "thermal" {
+            candidates = [.cpu, .memory]
+        } else if key == "focus" {
+            candidates = [.focus]
+        } else {
+            candidates = []
+        }
+        return candidates.lazy.compactMap { readouts.firstIndex(of: $0) }.first
     }
 
-    static func barCenter(_ index: Int?) -> CGFloat {
-        guard let index else { return RailController.barSize.width / 2 }
-        return RailGeometry.center(readoutSlots[min(2, max(0, index))], bottom: true)
+    static func bubbleCenter(for alert: LiveActivity?, readouts: [RailSlotPolicy.Target]) -> CGFloat {
+        slot(for: alert, in: readouts).map { RailGeometry.center($0) } ?? RailGeometry.height / 2
+    }
+
+    static func barCenter(for alert: LiveActivity?, readouts: [RailSlotPolicy.Target]) -> CGFloat {
+        slot(for: alert, in: readouts).map { RailGeometry.center($0, bottom: true) } ?? RailGeometry.bottomWidth / 2
     }
 
     // MARK: Body
@@ -973,14 +1055,25 @@ struct RailView: View {
                 .padding(bottom ? .horizontal : .vertical, Self.taper * 0.4)
                 .transition(.opacity)
         } else {
-            GlassShape(shape: RailShape(edge: state.side, taper: Self.taper,
-                                        tabWidth: bottom ? nil : RailController.tabSize.width,
-                                        bubble: state.phase == .alert && !bottom ? 1 : 0,
-                                        bubbleCenter: Self.bubbleCenter(for: state.alert),
-                                        bubbleLength: Self.bubbleWidth,
-                                        bubbleHeight: Self.bubbleHeight))
+            let shape = RailShape(edge: state.side, taper: Self.taper,
+                                  tabWidth: bottom ? nil : RailController.tabSize.width,
+                                  // Alerts speak through the label; the shape never grows.
+                                  bubble: 0,
+                                  bubbleCenter: 0,
+                                  bubbleLength: Self.bubbleWidth,
+                                  bubbleHeight: Self.bubbleHeight)
+            GlassShape(shape: shape)
+                .overlay { shape.fill(stateTint) }
                 .transition(.opacity)
         }
+    }
+
+    /// The tab's one hover and open state, laid over its own glass so the
+    /// whole shape responds: the card's tile tint on hover, its hover tint
+    /// while the card is open.
+    private var stateTint: Color {
+        if state.phase == .expanded { return HP.tileHover }
+        return state.hovering && !state.dragging ? HP.tile : .clear
     }
 
     var body: some View {
@@ -1017,22 +1110,13 @@ struct RailView: View {
         }
     }
 
-    /// Standing on a side: readouts in a column, an alert as a bubble.
+    /// Standing on a side: readouts in a column. An alert is a label beside
+    /// it, in its own window.
     private var tab: some View {
         ZStack(alignment: right ? .topTrailing : .topLeading) {
             outline
             slots
                 .frame(width: RailController.tabSize.width, height: size.height)
-            if state.phase == .alert, let a = state.alert {
-                bubbleContent(a)
-                    .frame(width: Self.bubbleWidth - 24, height: Self.bubbleHeight)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onAlertTap(a) }
-                    .help("Click to go to it")
-                    .offset(x: right ? -(RailController.tabSize.width + 10) : RailController.tabSize.width + 10,
-                            y: Self.bubbleCenter(for: a) - Self.bubbleHeight / 2)
-                    .transition(.opacity)
-            }
         }
     }
 
@@ -1042,6 +1126,9 @@ struct RailView: View {
     private var bar: some View {
         ZStack {
             dockGlass
+                .overlay {
+                    RoundedRectangle(cornerRadius: Self.barRadius, style: .continuous).fill(stateTint)
+                }
             slots
         }
     }
@@ -1060,21 +1147,42 @@ struct RailView: View {
 
     // MARK: Resting
 
-    /// All three targets keep the same centers and hit areas when the card
-    /// opens. The full set of sections belongs to the card's fixed tab row.
-    @ViewBuilder
+    /// The readouts as one control: the whole tab takes the hover tint and
+    /// the click. Moving between pages is the card's own tabs' job, so no
+    /// readout is a target of its own.
     private var slots: some View {
-        if bottom {
-            HStack(spacing: 0) {
-                ForEach(state.readouts, id: \.self) { sectionButton($0.page) }
+        Button(action: onTap) {
+            Group {
+                if bottom {
+                    HStack(spacing: 0) {
+                        ForEach(state.readouts, id: \.self) { readout($0) }
+                    }
+                    .padding(.horizontal, RailGeometry.bottomInset)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(state.readouts, id: \.self) { readout($0) }
+                    }
+                    .padding(.vertical, RailGeometry.endInset)
+                }
             }
-            .padding(.horizontal, RailGeometry.bottomInset)
-        } else {
-            VStack(spacing: 0) {
-                ForEach(state.readouts, id: \.self) { sectionButton($0.page) }
-            }
-            .padding(.vertical, RailGeometry.endInset)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Hotch")
+        .accessibilityValue(summary)
+        .accessibilityHint(state.phase == .expanded ? "Keeps the card open, or closes it if it is kept open"
+                                                    : "Opens the card. Drag to move it.")
+        .help(summary)
+    }
+
+    private func readout(_ target: RailSlotPolicy.Target) -> some View {
+        sectionVisual(target)
+            .frame(width: RailGeometry.slot, height: RailGeometry.slot)
+    }
+
+    private var summary: String {
+        state.readouts.map(sectionValue).filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
     }
 
     /// Memory gives the Mac slot its live context. The ring
@@ -1090,26 +1198,31 @@ struct RailView: View {
                        tint: memory?.pressure == .critical ? HP.red : HP.text) {
             ring(memory.map { $0.usedPercent / 100 }, color: color) { icon("memorychip") }
         }
-        .help("Memory used")
     }
 
-    /// The tightest plan window, around its provider's mark.
-    private var aiReadout: some View {
-        let tight = tightestWindow(in: store)
-        let identity = tight.map { ProviderIdentity.identity(for: $0.0.providerID) }
-        let critical = tight?.1.isCritical ?? false
-        return readout(tight.flatMap { $0.1.percent(mode) }.map(SysFmt.percent), unit: "%",
+    private var cpuReadout: some View {
+        let cpu = system.latest?.cpu.total
+        return readout(cpu.map { SysFmt.percent($0) }, unit: "%", tint: HP.text) {
+            ring(cpu.map { $0 / 100 }, color: HP.cpu) { icon("cpu") }
+        }
+    }
+
+    /// A provider's tightest plan window, around its mark.
+    private func providerReadout(_ providerID: String) -> some View {
+        let tight = tightest(providerID)
+        let identity = ProviderIdentity.identity(for: providerID)
+        let critical = tight?.isCritical ?? false
+        return readout(tight.flatMap { $0.percent(mode) }.map(SysFmt.percent), unit: "%",
                        tint: critical ? HP.red : HP.text) {
-            ring(tight.flatMap { $0.1.fillShare(mode) },
-                 color: critical ? HP.red : (identity?.accent ?? HP.text3)) {
-                if let identity {
-                    BrandMark(kind: identity.mark, size: 11, tint: identity.accent)
-                } else {
-                    icon(PanelPage.ai.symbol)
-                }
+            ring(tight.flatMap { $0.fillShare(mode) }, color: critical ? HP.red : identity.accent) {
+                BrandMark(kind: identity.mark, size: 11, tint: identity.accent)
             }
         }
-        .help("Tightest AI plan window")
+    }
+
+    private func tightest(_ providerID: String) -> UsageWindow? {
+        store.usages.first { $0.providerID == providerID }?
+            .windows.max { ($0.consumedPercent ?? -1) < ($1.consumedPercent ?? -1) }
     }
 
     /// Active sessions, one short arc each (amber waits on you), so a count
@@ -1124,7 +1237,10 @@ struct RailView: View {
         return readout("\(live.count)", unit: nil,
                        tint: needsYou ? HP.amber : (live.isEmpty ? HP.text3 : HP.text)) {
             ZStack {
-                Circle().stroke(HP.track, lineWidth: ringLine)
+                // While a session waits on you the track itself turns amber,
+                // so a label missed while it showed still leaves a cue, with
+                // nothing drawn outside the ring to crowd the count below.
+                Circle().stroke(needsYou ? HP.amber.opacity(0.3) : HP.track, lineWidth: ringLine)
                 ForEach(Array(colors.enumerated()), id: \.offset) { index, color in
                     let span = 1 / Double(Self.sessionSlots)
                     Circle()
@@ -1132,11 +1248,10 @@ struct RailView: View {
                         .stroke(color, style: StrokeStyle(lineWidth: ringLine, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
-                icon(PanelPage.agents.symbol)
+                icon("terminal")
             }
             .frame(width: ringSize, height: ringSize)
         }
-        .help(live.isEmpty ? "No active sessions" : "\(live.count) active session\(live.count == 1 ? "" : "s")")
     }
 
     static let sessionSlots = 6
@@ -1195,97 +1310,37 @@ struct RailView: View {
     // MARK: Section targets
 
     @ViewBuilder
-    private func sectionVisual(_ page: PanelPage) -> some View {
-        switch page {
-        case .mac: memoryReadout
-        case .ai: aiReadout
-        case .agents: sessionReadout
+    private func sectionVisual(_ target: RailSlotPolicy.Target) -> some View {
+        switch target {
+        case .provider(let id): providerReadout(id)
+        case .sessions: sessionReadout
+        case .memory: memoryReadout
+        case .cpu: cpuReadout
         case .focus:
             if let focus {
                 AnchorFocusReadout(focus: focus, style: .rail)
             } else {
-                Image(systemName: page.symbol).font(.system(size: 12, weight: .semibold)).foregroundStyle(HP.text3)
+                Image(systemName: "timer").font(.system(size: 12, weight: .semibold)).foregroundStyle(HP.text3)
             }
-        default:
-            Image(systemName: page.symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(state.phase == .expanded && pages.page == page ? HP.text : HP.text3)
         }
     }
 
-    private func sectionValue(_ page: PanelPage) -> String {
-        switch page {
-        case .mac:
-            return system.latest.map { "Memory, \(SysFmt.percent($0.memory.usedPercent)) percent used" } ?? "Memory unavailable"
-        case .ai:
-            let tight = tightestWindow(in: store)
-            return tight.flatMap { $0.1.percent(mode) }.map { "\(SysFmt.percent($0)) percent \(mode == .used ? "used" : "remaining")" } ?? "AI usage unavailable"
-        case .agents:
+    private func sectionValue(_ target: RailSlotPolicy.Target) -> String {
+        switch target {
+        case .provider(let id):
+            let name = store.usages.first { $0.providerID == id }?.displayName ?? Fmt.humanize(key: id)
+            return tightest(id).flatMap { $0.percent(mode) }
+                .map { "\(name) \(SysFmt.percent($0))% \(mode == .used ? "used" : "left")" } ?? "\(name) usage unavailable"
+        case .sessions:
             let count = sessionStore.sessions.filter { $0.activity <= .shell }.count
-            return "\(count) active sessions" + (needsYou ? ", needs attention" : "")
+            return "\(count) active session\(count == 1 ? "" : "s")" + (needsYou ? ", one needs you" : "")
+        case .memory:
+            return system.latest.map { "Memory \(SysFmt.percent($0.memory.usedPercent))% used" } ?? "Memory unavailable"
+        case .cpu:
+            return system.latest.map { "CPU \(SysFmt.percent($0.cpu.total))%" } ?? "CPU unavailable"
         case .focus:
             guard let focus, let time = AnchorFocusClock.readout(focus) else { return "No timer running" }
-            return "\(time.value) \(time.caption)"
-        default: return ""
-        }
-    }
-
-    private func sectionButton(_ page: PanelPage) -> some View {
-        let selected = state.phase == .expanded && page == pages.page && !pages.backpackCard
-        let hovered = state.hovered == page && !selected
-        return Button { onSelect(page) } label: {
-            sectionVisual(page)
-                .frame(width: RailGeometry.slot, height: RailGeometry.slot)
-                .background {
-                    if selected {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(HP.pill)
-                            .matchedGeometryEffect(id: "selection", in: selection)
-                    } else if hovered {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(HP.pill.opacity(0.5))
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { onHover(page, $0) }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(page.title)
-        .accessibilityValue(sectionValue(page))
-        .accessibilityHint(state.phase == .expanded ? "Show section" : "Open section. Drag to move the rail.")
-        .help(page.title + (sectionValue(page).isEmpty ? "" : " · " + sectionValue(page)))
-    }
-
-    // MARK: Speaking
-
-    private func bubbleContent(_ a: LiveActivity) -> some View {
-        HStack(spacing: 7) {
-            if right {
-                alertIcon(a)
-                Text(a.leading).foregroundStyle(HP.text).lineLimit(1)
-                Spacer(minLength: 4)
-                if a.dot { Circle().fill(a.trailingTint).frame(width: 5, height: 5) }
-                Text(a.trailing).foregroundStyle(a.trailingTint).lineLimit(1).fixedSize()
-            } else {
-                if a.dot { Circle().fill(a.trailingTint).frame(width: 5, height: 5) }
-                Text(a.trailing).foregroundStyle(a.trailingTint).lineLimit(1).fixedSize()
-                Spacer(minLength: 4)
-                Text(a.leading).foregroundStyle(HP.text).lineLimit(1)
-                alertIcon(a)
-            }
-        }
-        .font(.system(size: 11, weight: .semibold))
-    }
-
-    @ViewBuilder
-    private func alertIcon(_ a: LiveActivity) -> some View {
-        switch a.icon {
-        case .brand(let id):
-            let identity = ProviderIdentity.identity(for: id)
-            BrandMark(kind: identity.mark, size: 13, tint: identity.accent)
-        case .symbol(let name):
-            Image(systemName: name).font(.system(size: 11, weight: .semibold)).foregroundStyle(a.tint)
+            return "Focus \(time.value) \(time.caption)"
         }
     }
 }
@@ -1427,9 +1482,27 @@ final class DockLabel {
 
     var frame: CGRect { state.visible ? panel.frame : .zero }
 
+    /// Beside a tab standing on a side edge, centred on the readout the alert
+    /// is about. The gap keeps it a label rather than part of the tab.
+    func show(_ alert: LiveActivity, beside tab: CGRect, centerY: CGFloat, tabOnRight: Bool,
+              on screen: CGRect) {
+        hideWork?.cancel()
+        state.alert = alert
+        state.growsFrom = tabOnRight ? .trailing : .leading
+        host.layoutSubtreeIfNeeded()
+        let size = host.fittingSize
+        let gap: CGFloat = 8
+        let x = tabOnRight ? tab.minX - gap - size.width : tab.maxX + gap
+        let y = min(max(centerY - size.height / 2, screen.minY + 5), screen.maxY - size.height - 5)
+        panel.setFrame(CGRect(x: x, y: y, width: size.width, height: size.height), display: true)
+        panel.orderFrontRegardless()
+        withAnimation(AnchorMotion.morph) { state.visible = true }
+    }
+
     func show(_ alert: LiveActivity, over x: CGFloat, above y: CGFloat, on screen: CGRect) {
         hideWork?.cancel()
         state.alert = alert
+        state.growsFrom = .bottom
         host.layoutSubtreeIfNeeded()
         let size = host.fittingSize
         let left = min(max(x - size.width / 2, screen.minX + 5), screen.maxX - size.width - 5)
@@ -1457,6 +1530,8 @@ final class DockLabel {
 final class DockLabelState: ObservableObject {
     @Published var alert: LiveActivity?
     @Published var visible = false
+    /// The edge it grows out of: the bar below it, or the tab beside it.
+    @Published var growsFrom: UnitPoint = .bottom
 }
 
 struct DockLabelView: View {
@@ -1490,8 +1565,9 @@ struct DockLabelView: View {
                 .help("Click to go to it")
             }
         }
-        .scaleEffect(state.visible ? 1 : 0.92, anchor: .bottom)
-        .offset(y: state.visible ? 0 : 4)
+        .scaleEffect(state.visible ? 1 : 0.92, anchor: state.growsFrom)
+        .offset(x: state.visible ? 0 : (state.growsFrom == .trailing ? 6 : (state.growsFrom == .leading ? -6 : 0)),
+                y: state.visible || state.growsFrom != .bottom ? 0 : 4)
         .opacity(state.visible ? 1 : 0)
     }
 }
@@ -1604,6 +1680,7 @@ final class FloatController {
 
     private func applyVisibility() {
         let hidden = hiddenForFullscreen
+        guard !NotchPanel.unseen else { return }
         panel.ignoresMouseEvents = hidden
         guard (panel.alphaValue < 0.5) != hidden else { return }
         NSAnimationContext.runAnimationGroup { context in
@@ -2215,9 +2292,9 @@ final class AnchorManager {
         case key == "mem": open(.mac, detail: .memory)
         case key.hasPrefix("limit-"): open(.ai)
         case key == "thermal": open(.mac)
-        case key == "focus": open(.focus)
-        case key.hasPrefix("need-"), key.hasPrefix("done-"): open(.agents)
-        default: open(.now)
+        case key == "focus": open(.desk)
+        case key.hasPrefix("need-"), key.hasPrefix("done-"): open(.ai)
+        default: open(.home)
         }
     }
 
