@@ -44,12 +44,19 @@ jobs:
           python3 - <<'EOF' > enclosures.txt
           import xml.etree.ElementTree as ET
           for enclosure in ET.parse("docs/appcast.xml").iter("enclosure"):
-              print(enclosure.get("url"))
+              print(enclosure.get("url"), enclosure.get("length"))
           EOF
           test -s enclosures.txt || { echo "the appcast offers no downloads"; exit 1; }
-          while read -r url; do
-            curl -sfIL -o /dev/null "$url" || { echo "missing download: $url (upload it to the release first)"; exit 1; }
-            echo "ok  $url"
+          # The length generate_appcast recorded must match what GitHub serves:
+          # a different file under the same name, such as the dist zip, would
+          # fail every update as improperly signed.
+          while read -r url length; do
+            served=$(curl -sfIL --retry 3 --retry-delay 5 --max-time 30 -o /dev/null \
+              -w '%header{content-length}' "$url") \
+              || { echo "missing download: $url (upload it to the release first)"; exit 1; }
+            [ "$served" = "$length" ] \
+              || { echo "wrong download: $url is $served bytes, the appcast signed $length (upload build/updates/$(basename "$url"))"; exit 1; }
+            echo "ok  $url ($length bytes)"
           done < enclosures.txt
 
       - name: Stage the appcast alone

@@ -104,7 +104,10 @@ extension EnvironmentValues {
 final class PanelModel: ObservableObject {
     /// Hidden notch windows release their live content between openings.
     @Published var mounted: Bool = false
-    @Published var expanded: Bool = false
+    /// Opening or closing restarts the quiet minute a downloaded update waits.
+    @Published var expanded: Bool = false {
+        didSet { if expanded != oldValue { AppUpdater.shared.noteActivity() } }
+    }
     @Published var notchWidth: CGFloat = NotchGeometryResolver.virtualNotchWidth
     @Published var notchHeight: CGFloat = 32
     @Published var panelWidth: CGFloat = NotchGeometryResolver.minPanelWidth

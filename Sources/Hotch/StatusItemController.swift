@@ -416,16 +416,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Absent from a copy built without a feed, where it could only fail.
         let updates = AppUpdater.shared
         if updates.isRunning {
-            let title: String
-            switch updates.offer {
-            case .available(let version): title = "Update to Hotch \(version)\u{2026}"
-            case .ready(let version): title = "Restart to Install Hotch \(version)"
-            case nil: title = "Check for Updates\u{2026}"
-            }
             // No action while a check is already running: the menu enables
             // items by whether they have one.
-            let available = updates.canCheck || updates.offer != nil
-            let check = NSMenuItem(title: title, action: available ? #selector(checkForUpdates) : nil,
+            let check = NSMenuItem(title: updates.actionTitle,
+                                   action: updates.canAct ? #selector(checkForUpdates) : nil,
                                    keyEquivalent: "")
             check.target = self
             menu.addItem(check)

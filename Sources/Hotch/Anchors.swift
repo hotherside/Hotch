@@ -43,7 +43,10 @@ enum AnchorMotion {
 
 @MainActor
 final class CardPresence: ObservableObject {
-    @Published var visible = false
+    /// Opening or closing restarts the quiet minute a downloaded update waits.
+    @Published var visible = false {
+        didSet { if visible != oldValue { AppUpdater.shared.noteActivity() } }
+    }
     /// Where the card grows from: the side of the anchor that opened it.
     @Published var origin: UnitPoint = .topTrailing
     @Published var showsTabs = true
