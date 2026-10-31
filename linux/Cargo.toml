@@ -1,6 +1,6 @@
 [package]
 name = "hotch"
-version = "2.3.0"
+version = "2.4.0"
 edition = "2024"
 description = "Hotch for Linux: AI plan usage, agent sessions and system load in the GNOME top bar, a tray or a CLI"
 license = "MIT"

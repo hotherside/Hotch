@@ -12,7 +12,7 @@ body:
     attributes:
       label: Hotch version
       description: On macOS, find this in Settings → About. On Linux, run `hotch version`.
-      placeholder: 2.3.0
+      placeholder: 2.4.0
     validations:
       required: true
   - type: input
