@@ -4,6 +4,8 @@ Notable user-facing changes are recorded here.
 
 ## Unreleased
 
+## 2.5.0
+
 - macOS: four tabs instead of six, shown as symbols beside the page's name. **Hotch** is home: usage, CPU, memory and thermals, a one-click Focus start and the last two clipboard items. **AI** puts each provider's plan windows above the sessions running on it. **Mac** is unchanged. **Desk** holds Focus, the clipboard and Backpack mode.
 - macOS: a Claude Code session shows the step it is on and how long that step has run, and a session waiting on you shows the command it wants approved. Codex sessions keep their project line.
 - macOS: an alert on the screen-edge tab is now a label beside the tab instead of a bar growing out of it, and the sessions ring turns amber while a session waits on you.

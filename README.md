@@ -44,13 +44,13 @@ Native view snapshots with demo data, one per section, ending on an alert.
 
 ## Install
 
-Download `Hotch-2.4.0.dmg` from the [latest release](https://github.com/hotherside/Hotch/releases/latest), open it and drag **Hotch** into **Applications**. Then open Hotch from your Applications folder. It runs on macOS 14 Sonoma or later, on Apple silicon and Intel Macs.
+Download `Hotch-2.5.0.dmg` from the [latest release](https://github.com/hotherside/Hotch/releases/latest), open it and drag **Hotch** into **Applications**. Then open Hotch from your Applications folder. It runs on macOS 14 Sonoma or later, on Apple silicon and Intel Macs.
 
 Hotch is signed with a Developer ID and notarised by Apple, so it opens like any other app. A short welcome helps you choose where it lives, then points to it.
 
 From 2.4.0, Hotch updates itself. Once a day it checks for a new version and shows what changed, with Install, Remind Me Later and Skip This Version. To have updates download and install on their own instead, or to stop checking, use **Settings → App updates**; automatic installs wait until the card is closed and no Focus timer or Backpack session is running. Hotch 2.3.0 and earlier cannot update themselves: download the latest version once more and later ones arrive in the app.
 
-To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.4.0.dmg` with the SHA-256 shown next to the file on the release page.
+To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.5.0.dmg` with the SHA-256 shown next to the file on the release page.
 
 Prefer to build it yourself? See [Build from source](#build-from-source).
 
