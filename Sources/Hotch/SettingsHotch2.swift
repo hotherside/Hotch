@@ -144,9 +144,12 @@ struct UpdateSettings: View {
                 .padding(.top, 4)
                 .disabled(!updates.isRunning)
             HStack(spacing: 10) {
-                Button("Check for Updates\u{2026}") { updates.checkForUpdates() }
+                // "Restart to Install" once an update has downloaded: Settings
+                // being open is what holds it back, so this is where it is
+                // most likely to be clicked.
+                Button(updates.actionTitle) { updates.checkForUpdates() }
                     .controlSize(.small)
-                    .disabled(!updates.canCheck)
+                    .disabled(!updates.canAct)
                 if let checked = Fmt.ago(updates.lastChecked) {
                     Text("Last checked \(checked)")
                         .font(.system(size: 11))

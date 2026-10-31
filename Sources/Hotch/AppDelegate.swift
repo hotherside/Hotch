@@ -313,7 +313,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 welcomeOpen: self.onboardingWindowController.isOpen,
                 settingsOpen: self.settingsWindowController.isOpen,
                 cardOpen: self.anchors.isShown || self.statusItemController.popoverWindow != nil,
-                focusRunning: self.focusStore.isRunning,
+                focusRunning: self.focusStore.isRunning && !self.focusStore.isPaused,
+                focusPaused: self.focusStore.isPaused,
                 backpackActive: self.backpack.isOn)
         }
         updates.onWillRelaunch = { [weak self] in self?.relaunchingForUpdate = true }

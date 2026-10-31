@@ -41,8 +41,12 @@ FEED_URL       ?= https://hotch.hotherside.com/appcast.xml
 # The appcast as published, committed so each release's entry is reviewed.
 APPCAST_FILE   := docs/appcast.xml
 UPDATES_DIR    := $(BUILD_DIR)/updates
-UPDATE_ZIP     := $(UPDATES_DIR)/$(APP_NAME)-$(VERSION).zip
+# Named apart from the `dist` zip, which holds the same app: uploading that
+# one in its place would fail every update as improperly signed.
+UPDATE_ZIP     := $(UPDATES_DIR)/$(APP_NAME)-$(VERSION)-update.zip
 APPCAST_STAGE  := $(BUILD_DIR)/appcast-stage
+# generate_appcast takes the notes from the file named like the archive.
+APPCAST_NOTES  := $(APPCAST_STAGE)/$(basename $(notdir $(UPDATE_ZIP))).md
 RELEASE_URL    := https://github.com/hotherside/Hotch/releases/download/v$(VERSION)/
 # Where `make appcast` finds this version's release notes.
 CHANGELOG      := CHANGELOG.md
@@ -622,8 +626,8 @@ appcast:
 	cp "$(UPDATE_ZIP)" "$(APPCAST_STAGE)/"
 	@awk -v want="## $(VERSION)" \
 	  '$$0 == want { on = 1; next } on && /^## / { exit } on { print }' "$(CHANGELOG)" \
-	  | sed -e '/./,$$!d' > "$(APPCAST_STAGE)/$(APP_NAME)-$(VERSION).md"
-	@if [ ! -s "$(APPCAST_STAGE)/$(APP_NAME)-$(VERSION).md" ]; then \
+	  | sed -e '/./,$$!d' > "$(APPCAST_NOTES)"
+	@if [ ! -s "$(APPCAST_NOTES)" ]; then \
 	  echo "error: $(CHANGELOG) has no '## $(VERSION)' section for the release notes"; exit 1; \
 	fi
 	@if [ -f "$(APPCAST_FILE)" ]; then cp "$(APPCAST_FILE)" "$(APPCAST_STAGE)/appcast.xml"; fi

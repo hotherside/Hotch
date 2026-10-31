@@ -11,20 +11,24 @@ enum UpdatePolicy {
         var welcomeOpen = false
         var settingsOpen = false
         var cardOpen = false
+        /// A Focus run whose clock is counting.
         var focusRunning = false
+        /// A Focus run on pause. A relaunch brings it back paused, as it was.
+        var focusPaused = false
         var backpackActive = false
     }
 
     /// Whether Sparkle may put a *scheduled* update window up itself.
     ///
     /// Never over the welcome, which is someone's first minute with the app,
-    /// and never during a Focus run, which is the one time Hotch has promised
-    /// to keep quiet. Otherwise Sparkle's own rules for background apps apply:
-    /// it shows the window behind whatever is in front, and only takes focus
-    /// right after launch. In both excluded cases the card's update line is
-    /// the reminder, and nothing is lost by waiting for it to be noticed.
+    /// and never during a Focus run, counting or paused, which is the one time
+    /// Hotch has promised to keep quiet. Otherwise Sparkle's own rules for
+    /// background apps apply: it shows the window behind whatever is in front,
+    /// and only takes focus right after launch. In both excluded cases the
+    /// card's update line is the reminder, and nothing is lost by waiting for
+    /// it to be noticed.
     static func sparkleShowsScheduledUpdate(_ moment: Moment) -> Bool {
-        !moment.welcomeOpen && !moment.focusRunning
+        !moment.welcomeOpen && !moment.focusRunning && !moment.focusPaused
     }
 
     /// Whether an update that downloaded itself may install and relaunch now.
@@ -33,14 +37,39 @@ enum UpdatePolicy {
     /// any window and would end a Backpack session (the helper restores sleep
     /// when Hotch goes), so it waits until nothing is open or running. Quitting
     /// installs it anyway, so the wait is never longer than the next quit.
+    /// A paused Focus run does not hold it: the relaunch brings the run back
+    /// paused, and Sparkle does not check again while an update waits, so
+    /// holding it for a run left paused could mean weeks on an old version.
     static func isQuiet(_ moment: Moment) -> Bool {
         !moment.cardOpen && !moment.focusRunning && !moment.backpackActive
             && !moment.welcomeOpen && !moment.settingsOpen
     }
 
+    /// Whether to install now: quiet, and quiet for `quietFor` since anything
+    /// was last open or running. `busyAt` moves on whenever a card or window
+    /// closes, so a card glanced at between two looks still gets its minute.
+    static func mayInstall(_ moment: Moment, busyAt: Date, now: Date) -> Bool {
+        isQuiet(moment) && now.timeIntervalSince(busyAt) >= quietFor
+    }
+
     /// How long the moment has to stay quiet before a relaunch, so closing the
     /// card is not instantly followed by the companion vanishing.
     static let quietFor: TimeInterval = 60
+
+    /// What a restart someone asked for would interrupt, for its confirmation;
+    /// nil when nothing is lost and it can go ahead at once. The open card or
+    /// Settings is where the request comes from, so neither counts, and a
+    /// paused Focus run comes back as it was.
+    static func restartWarning(_ moment: Moment) -> String? {
+        let backpack = "This ends the Backpack session, so closing the lid puts your Mac to sleep again."
+        let focus = "Your Focus timer keeps counting and carries on after the restart."
+        switch (moment.backpackActive, moment.focusRunning) {
+        case (true, true): return backpack + " " + focus
+        case (true, false): return backpack
+        case (false, true): return "Hotch closes for a second or two. " + focus
+        case (false, false): return nil
+        }
+    }
 }
 
 /// In-app updates, through Sparkle.
@@ -76,10 +105,13 @@ final class AppUpdater: NSObject, ObservableObject {
     /// Called just before Sparkle quits the app to relaunch the new version.
     var onWillRelaunch: () -> Void = {}
 
+    /// When something was last open or running, or a card or window closed.
+    /// A downloaded update installs only a full `UpdatePolicy.quietFor` later.
+    private(set) var busyAt = Date()
+
     private var controller: SPUStandardUpdaterController?
     private var installNow: (() -> Void)?
     private var quietWatch: Timer?
-    private var quietSince: Date?
     private var cancellables: Set<AnyCancellable> = []
 
     /// False for a copy without a feed and key in its Info.plist: `swift run`
@@ -96,6 +128,21 @@ final class AppUpdater: NSObject, ObservableObject {
 
     /// When Sparkle last asked the feed, for Settings.
     var lastChecked: Date? { controller?.updater.lastUpdateCheckDate }
+
+    /// The update command's title, the same in the Hotch menu and Settings,
+    /// so a click that will restart Hotch says so.
+    var actionTitle: String { Self.actionTitle(for: offer) }
+
+    static func actionTitle(for offer: Offer?) -> String {
+        switch offer {
+        case .available(let version): return "Update to Hotch \(version)\u{2026}"
+        case .ready(let version): return "Restart to Install Hotch \(version)"
+        case nil: return "Check for Updates\u{2026}"
+        }
+    }
+
+    /// False only while Sparkle is already checking and nothing is waiting.
+    var canAct: Bool { canCheck || offer != nil }
 
     func start() {
         guard controller == nil, AppUpdater.isConfigured else { return }
@@ -125,18 +172,49 @@ final class AppUpdater: NSObject, ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.installsAutomatically = $0 }
             .store(in: &cancellables)
+        // Settings, the welcome and Sparkle's own window: closing one is as
+        // recent a sign of someone at the Mac as a card closing.
+        NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)
+            .sink { [weak self] _ in self?.noteActivity() }
+            .store(in: &cancellables)
     }
 
     // MARK: Actions
 
-    /// "Check for Updates…": a user-initiated check, or the pending update
-    /// brought back to the front.
+    /// The update command in Settings, the menu and the card: a user-initiated
+    /// check, the pending update brought back to the front, or a downloaded
+    /// one installed now.
     func checkForUpdates() {
-        if case .ready = offer, let installNow {
+        if case .ready(let version) = offer, let installNow {
+            guard confirmRestart(installing: version) else { return }
+            quietWatch?.invalidate()
+            quietWatch = nil
             installNow()
             return
         }
         controller?.checkForUpdates(nil)
+    }
+
+    /// A card opened or closed. The quiet minute before an automatic install
+    /// starts again from now. Called by the cards themselves, because a card
+    /// can come and go between two looks of the quiet watch.
+    func noteActivity(now: Date = Date()) {
+        busyAt = now
+    }
+
+    /// A restart asked for in Settings, the menu or the card is immediate,
+    /// unless it would end a Backpack session or interrupt a counting Focus
+    /// run: then it asks first.
+    private func confirmRestart(installing version: String) -> Bool {
+        guard let warning = UpdatePolicy.restartWarning(moment()) else { return true }
+        let alert = NSAlert()
+        alert.icon = HotchIcon.appIconImage()
+        alert.messageText = "Restart Hotch to install \(version)?"
+        alert.informativeText = warning
+        alert.addButton(withTitle: "Restart")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func setChecksAutomatically(_ on: Bool) {
@@ -151,7 +229,7 @@ final class AppUpdater: NSObject, ObservableObject {
 
     private func watchForQuietMoment() {
         quietWatch?.invalidate()
-        quietSince = nil
+        busyAt = Date()
         let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.installIfQuiet() }
         }
@@ -167,13 +245,12 @@ final class AppUpdater: NSObject, ObservableObject {
         }
         // Switched off since it downloaded: no relaunch unasked. It still
         // installs at quit, or now from the card's Restart.
-        guard installsAutomatically, UpdatePolicy.isQuiet(moment()) else {
-            quietSince = nil
+        let moment = self.moment()
+        guard installsAutomatically, UpdatePolicy.isQuiet(moment) else {
+            busyAt = now
             return
         }
-        let since = quietSince ?? now
-        quietSince = since
-        guard now.timeIntervalSince(since) >= UpdatePolicy.quietFor else { return }
+        guard UpdatePolicy.mayInstall(moment, busyAt: busyAt, now: now) else { return }
         hotchLog.log("installing a downloaded update at a quiet moment")
         quietWatch?.invalidate()
         quietWatch = nil
