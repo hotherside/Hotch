@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeSettings, displayedPercent, focusAction, focusReading, clockText,
-    privateClipboard, rememberClipboard, companionPosition} from '../gnome-extension/model.js';
+    privateClipboard, rememberClipboard, companionPosition, focusRun, quickFocus, sessionSummary,
+    systemAlerts, systemWarning} from '../gnome-extension/model.js';
 
 test('invalid stored preferences fall back safely while existing pill position survives', () => {
     const result = normalizeSettings({home: 'bogus', providers: 'claude', refreshSeconds: 0, clipboardEnabled: 'yes', pillX: -150});
@@ -64,4 +65,34 @@ test('edges anchor and floating companions remain on negative-coordinate display
     assert.deepEqual(companionPosition('edge-right', monitor, 80, 200, 0, 0, 30), [-80, 440]);
     assert.deepEqual(companionPosition('edge-bottom', monitor, 200, 80, 0, 0, 30), [-1060, 1000]);
     assert.deepEqual(companionPosition('orb', monitor, 80, 80, 2000, -200, 30), [-80, 30]);
+});
+
+test('home and Desk show a Focus run only while it is under way or paused', () => {
+    let focus = normalizeSettings().focus;
+    assert.equal(focusRun(focus, 100), null);
+    focus = quickFocus(focus, 15, 100);
+    assert.deepEqual([focus.mode, focus.duration, focus.elapsed, focus.startedAt], ['timer', 900, 0, 100]);
+    assert.deepEqual(focusRun(focus, 160), {clock: '14:00', paused: false, caption: 'left'});
+    const paused = focusAction(focus, 'pause', 160);
+    assert.deepEqual(focusRun(paused, 999), {clock: '14:00', paused: true, caption: 'paused'});
+    assert.equal(focusRun(focusAction(focus, 'complete', 1000), 1000), null, 'a finished timer offers a new start');
+    const stopwatch = quickFocus(paused, null, 200);
+    assert.deepEqual([stopwatch.mode, stopwatch.elapsed, stopwatch.startedAt], ['stopwatch', 0, 200]);
+    assert.equal(focusRun(stopwatch, 265).caption, 'elapsed');
+    assert.equal(focusRun(stopwatch, 265).clock, '01:05');
+});
+
+test('the AI caption sums sessions like the Mac, and Computer names its most serious warning', () => {
+    const s = activity => ({activity});
+    assert.equal(sessionSummary([]), null);
+    assert.equal(sessionSummary([s('needs input'), s('working'), s('working'), s('waiting')]), '1 needs input · 2 working');
+    assert.equal(sessionSummary([s('waiting'), s('waiting')]), '2 waiting');
+    assert.equal(sessionSummary([s('shell'), s('ended')]), 'nothing live');
+
+    assert.equal(systemWarning({cpuPercent: 20, memUsedGB: 4, memTotalGB: 16}), null);
+    assert.equal(systemWarning({cpuPercent: 95, memUsedGB: 15, memTotalGB: 16}), 'Memory use is high');
+    assert.equal(systemWarning({cpuPercent: 95, memUsedGB: 4, memTotalGB: 16}), 'CPU is busy');
+    assert.equal(systemWarning({memUsedGB: 4, memTotalGB: 16, battery: {percent: 12, status: 'Discharging'}}), 'Battery is low');
+    assert.equal(systemWarning({memUsedGB: 4, memTotalGB: 16, battery: {percent: 12, status: 'Charging'}}), null);
+    assert.deepEqual(systemAlerts({}), {memory: false, cpu: false, battery: false});
 });

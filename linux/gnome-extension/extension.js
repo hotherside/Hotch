@@ -18,7 +18,8 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {mergeUsage, readingStatus, updateNotice} from './data.js';
 import {HOMES, normalizeSettings, displayedPercent, focusReading, focusAction,
-    clockText, privateClipboard, rememberClipboard, companionPosition} from './model.js';
+    clockText, focusRun, quickFocus, sessionSummary, systemAlerts, systemWarning,
+    privateClipboard, rememberClipboard, companionPosition} from './model.js';
 
 const STALE_SECONDS = 30;
 const CRITICAL_PERCENT = 90;
@@ -35,14 +36,18 @@ const CPU = [0.39, 0.82, 1.0];
 const MEMORY = [1.0, 0.84, 0.04];
 const POWER = [0.20, 0.84, 0.29];
 
+// The card's four tabs, as on the Mac (PanelPage), where the system tab is
+// called Mac. Home draws the Hotch mark rather than a themed icon; Desk takes
+// Focus's clock, since clipboard history is off until switched on.
 const TABS = [
-    {id: 'now', label: 'Now', icons: ['speedometer-symbolic', 'view-grid-symbolic']},
-    {id: 'ai', label: 'AI', icons: ['starred-symbolic']},
-    {id: 'sessions', label: 'Sessions', icons: ['utilities-terminal-symbolic']},
-    {id: 'system', label: 'System', icons: ['computer-symbolic']},
-    {id: 'focus', label: 'Focus', icons: ['alarm-symbolic']},
-    {id: 'clipboard', label: 'Clipboard', icons: ['edit-paste-symbolic']},
+    {id: 'home', title: 'Hotch'},
+    {id: 'ai', title: 'AI', icons: ['starred-symbolic']},
+    {id: 'computer', title: 'Computer', icons: ['computer-symbolic']},
+    {id: 'desk', title: 'Desk', icons: ['alarm-symbolic', 'appointment-soon-symbolic']},
 ];
+const REFRESH = [[30, '30 seconds'], [60, '1 minute'], [120, '2 minutes'], [300, '5 minutes']];
+const EVERY = {30: 'every 30 seconds', 60: 'every minute', 120: 'every 2 minutes', 300: 'every 5 minutes'};
+const FOCUS_MINUTES = [15, 25, 50];
 
 // MARK: - Ring
 
@@ -96,6 +101,66 @@ class HotchRing extends St.DrawingArea {
     }
 });
 
+/// Port of HotchGlyph, the home tab's mark: the app icon's companion curve in
+/// the tab's colour, its signal dot always clay.
+const Glyph = GObject.registerClass(
+class HotchGlyph extends St.DrawingArea {
+    _init() {
+        super._init({style_class: 'hotch-tab-glyph', x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER});
+    }
+
+    vfunc_repaint() {
+        const cr = this.get_context();
+        const [w, h] = this.get_surface_size();
+        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+        const fg = this.get_theme_node().get_foreground_color();
+        cr.setLineWidth(1.9 * scale);
+        cr.setLineCap(Cairo.LineCap.ROUND);
+        cr.setSourceRGBA(fg.red / 255, fg.green / 255, fg.blue / 255, fg.alpha / 255);
+        cr.moveTo(w * 0.60, h * 0.16);
+        cr.curveTo(w * 0.17, h * 0.21, w * 0.17, h * 0.79, w * 0.60, h * 0.84);
+        cr.stroke();
+        // A dark tab colour means the light theme, which takes the deeper clay.
+        const light = fg.red + fg.green + fg.blue < 3 * 128;
+        cr.setSourceRGBA(...(light ? [0.86, 0.42, 0.28] : [1, 0.55, 0.40]), 1);
+        cr.arc(w * 0.66, h * 0.5, w * 0.12, 0, 2 * Math.PI);
+        cr.fill();
+        cr.$dispose();
+    }
+});
+
+/// A thin bar for home's computer tiles: faint track, the share in colour.
+const Meter = GObject.registerClass(
+class HotchMeter extends St.DrawingArea {
+    _init(share, color) {
+        super._init({style_class: 'hotch-meter', x_expand: true});
+        this._share = Math.max(0, Math.min(1, share ?? 0));
+        this._color = color;
+    }
+
+    vfunc_repaint() {
+        const cr = this.get_context();
+        const [w, h] = this.get_surface_size();
+        const r = h / 2;
+        const bar = width => {
+            cr.newPath();
+            cr.arc(r, r, r, Math.PI / 2, 3 * Math.PI / 2);
+            cr.arc(width - r, r, r, -Math.PI / 2, Math.PI / 2);
+            cr.closePath();
+            cr.fill();
+        };
+        const fg = this.get_theme_node().get_foreground_color();
+        cr.setSourceRGBA(fg.red / 255, fg.green / 255, fg.blue / 255, 0.16);
+        bar(w);
+        if (this._share > 0) {
+            cr.setSourceRGBA(...this._color, 1);
+            bar(Math.max(h, w * this._share));
+        }
+        cr.$dispose();
+    }
+});
+
 // MARK: - Small builders
 
 const label = (text, styleClass, props = {}) =>
@@ -104,6 +169,13 @@ const label = (text, styleClass, props = {}) =>
 const vbox = (styleClass, props = {}) => new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: styleClass, ...props});
 const hbox = (styleClass, props = {}) => new St.BoxLayout({style_class: styleClass, ...props});
 const spacer = () => new St.Widget({x_expand: true});
+
+/// A row whose children share its width equally, St having no grid.
+function columns(styleClass) {
+    const row = hbox(styleClass);
+    row.layout_manager.homogeneous = true;
+    return row;
+}
 
 function themedIcon(names, styleClass) {
     return new St.Icon({gicon: Gio.ThemedIcon.new_from_names(names), style_class: styleClass});
@@ -183,7 +255,7 @@ class HotchIndicator extends PanelMenu.Button {
         this._ext = extension;
         this._data = null;
         this._checkedAt = 0;
-        this._tab = 'now';
+        this._tab = 'home';
         this._cancellable = new Gio.Cancellable();
 
         const box = hbox('hotch-panel-box');
@@ -195,19 +267,26 @@ class HotchIndicator extends PanelMenu.Button {
         box.add_child(this._panelAlert);
         this.add_child(box);
 
+        // The page's name and one line about it on the left, the tabs as icons
+        // on the right: one row where a labelled tab bar and a title took two.
         this._card = vbox('hotch-card');
-        this._tabs = hbox('hotch-tabs');
+        const header = hbox('hotch-header');
+        const heading = vbox('hotch-heading', {x_expand: true, y_align: Clutter.ActorAlign.CENTER});
+        this._titleLabel = label('', 'hotch-heading-title');
+        this._captionLabel = label('', 'hotch-heading-caption');
+        heading.add_child(this._titleLabel);
+        heading.add_child(this._captionLabel);
+        this._tabs = hbox('hotch-tabs', {y_align: Clutter.ActorAlign.CENTER});
         this._tabButtons = {};
         for (const tab of TABS) {
-            const button = new St.Button({style_class: 'hotch-tab', x_expand: true, can_focus: true});
-            const inner = vbox('hotch-tab-inner');
-            inner.add_child(themedIcon(tab.icons, 'hotch-tab-icon'));
-            inner.add_child(label(tab.label, 'hotch-tab-label', {x_align: Clutter.ActorAlign.CENTER}));
-            button.set_child(inner);
+            const button = new St.Button({style_class: 'hotch-tab', can_focus: true, accessible_name: tab.title});
+            button.set_child(tab.icons ? themedIcon(tab.icons, 'hotch-tab-icon') : new Glyph());
             button.connect('clicked', () => this._show(tab.id));
             this._tabButtons[tab.id] = button;
             this._tabs.add_child(button);
         }
+        header.add_child(heading);
+        header.add_child(this._tabs);
         this._page = vbox('hotch-page');
         this._scroll = new St.ScrollView({style_class: 'hotch-scroll', overlay_scrollbars: true,
             hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC});
@@ -247,7 +326,7 @@ class HotchIndicator extends PanelMenu.Button {
         this._updateRow.add_child(spacer());
         this._updateRow.add_child(this._updateSkip);
 
-        this._card.add_child(this._tabs);
+        this._card.add_child(header);
         this._card.add_child(this._scroll);
         this._card.add_child(this._updateRow);
         this._card.add_child(this._footer);
@@ -403,9 +482,10 @@ class HotchIndicator extends PanelMenu.Button {
         this._checkedAt = now();
         // Usage refresh must not replace text fields while a Focus task or
         // custom duration is being typed. Clock ticks update only the label.
-        if (this._tab === 'focus') {
+        if (this._tab === 'desk') {
             this._renderPanel();
             this._renderUpdate();
+            this._renderHeader();
             this._ext.pill?.render(this._data);
             this._checkedLabel.text = 'Last check just now';
         } else {
@@ -416,6 +496,8 @@ class HotchIndicator extends PanelMenu.Button {
     // MARK: Rendering
 
     _show(tab) {
+        if (tab !== this._tab)
+            this._focusDraft = null;
         this._tab = tab;
         this._render();
     }
@@ -429,34 +511,102 @@ class HotchIndicator extends PanelMenu.Button {
         this._ext.pill?.render(this._data);
         this._homeButton.set_child(label(this._ext.settings.home === 'panel' ? 'Float as pill' : 'Move to top bar',
             'hotch-footer-label hotch-home-label'));
+        // Settings, opened from the footer, leaves every tab unselected.
         for (const [id, button] of Object.entries(this._tabButtons)) {
             if (id === this._tab)
                 button.add_style_pseudo_class('checked');
             else
                 button.remove_style_pseudo_class('checked');
         }
+        // A task name typed on Desk outlives a redraw (a clipboard switch, a
+        // settings reload) until another tab opens.
+        if (this._tab === 'desk' && this._focusTitle)
+            this._focusDraft = this._focusTitle.get_text();
         this._page.destroy_all_children();
-        this._focusClock = null;
+        this._focusClock = this._homeClock = this._focusTitle = this._clipboardBox = null;
+        this._renderHeader();
         this._checkedLabel.text = this._checkedAt ? `Last check ${ago(now() - this._checkedAt)}` : 'Checking…';
 
-        // Preferences, Focus and Clipboard are usable without the Rust binary.
-        if (this._tab === 'settings') { this._renderSettings(); return; }
-        if (this._tab === 'focus') { this._renderFocus(); return; }
-        if (this._tab === 'clipboard') { this._renderClipboard(); return; }
-        if (!this._data) {
-            this._page.add_child(label('Reading usage…', 'hotch-muted hotch-empty'));
-            return;
+        // Desk and Settings are usable without the Rust binary; home keeps its
+        // Desk block when the binary is missing.
+        ({home: this._renderHome, ai: this._renderAI, computer: this._renderComputer,
+            desk: this._renderDesk, settings: this._renderSettings})[this._tab].call(this);
+    }
+
+    /// What stands in for the binary's readings until it has answered.
+    _dataStatus() {
+        if (!this._data)
+            return label('Reading usage…', 'hotch-muted hotch-empty');
+        if (!this._data.missing)
+            return null;
+        const tile = vbox('hotch-tile');
+        tile.add_child(label('hotch is not installed', 'hotch-title'));
+        tile.add_child(label('Build it from the linux folder and put it in ~/.local/bin.',
+            'hotch-sub', {style: 'max-width: 300px;'}));
+        return tile;
+    }
+
+    _renderHeader() {
+        const [caption, alert] = this._headerCaption();
+        this._titleLabel.text = TABS.find(tab => tab.id === this._tab)?.title ?? 'Settings';
+        this._captionLabel.text = caption;
+        if (alert)
+            this._captionLabel.add_style_class_name('hotch-heading-alert');
+        else
+            this._captionLabel.remove_style_class_name('hotch-heading-alert');
+    }
+
+    /// One line about the open page, and whether it is a warning.
+    _headerCaption() {
+        const s = this._ext.settings;
+        switch (this._tab) {
+        case 'home':
+            return [GLib.DateTime.new_from_unix_local(Math.floor(now())).format('%A %-d %B'), false];
+        case 'ai': {
+            const sessions = this._data?.sessions ?? [];
+            return [sessionSummary(sessions) ?? 'No sessions right now',
+                sessions.some(item => item.activity === 'needs input')];
         }
-        if (this._data.missing) {
-            const tile = vbox('hotch-tile');
-            tile.add_child(label('hotch is not installed', 'hotch-title'));
-            tile.add_child(label('Build it from the linux folder and put it in ~/.local/bin.',
-                'hotch-sub', {style: 'max-width: 300px;'}));
-            this._page.add_child(tile);
-            return;
+        case 'computer': {
+            const sys = this._data?.system;
+            if (!sys)
+                return ['Waiting for readings', false];
+            if (sys.error)
+                return ['No readings on this system', false];
+            const warning = systemWarning(sys);
+            return warning ? [warning, true] : [`Updated ${EVERY[s.refreshSeconds]}`, false];
         }
-        ({now: this._renderNow, ai: this._renderAI, sessions: this._renderSessions,
-            system: this._renderSystem})[this._tab].call(this);
+        case 'desk': {
+            const run = focusRun(s.focus, now());
+            if (run)
+                return [`Focus · ${run.clock} ${run.caption}`, false];
+            return [s.clipboardEnabled ? 'Focus and clipboard' : 'Focus · clipboard history off', false];
+        }
+        default:
+            return ['Shared with the tray and CLI', false];
+        }
+    }
+
+    /// The Focus clock's one-second tick: only clock text changes, so nothing
+    /// being typed on Desk is redrawn.
+    tick() {
+        const f = this._ext.settings.focus;
+        if (this._focusClock)
+            this._focusClock.text = clockText(focusReading(f, now()).seconds);
+        const run = focusRun(f, now());
+        if (this._homeClock && run)
+            this._homeClock.text = run.clock;
+        if (this._tab === 'desk')
+            this._renderHeader();
+    }
+
+    /// A copy or a cleared history redraws only the clipboard rows on Desk,
+    /// so its Focus fields keep what is being typed.
+    clipboardChanged() {
+        if (this._tab === 'desk' && this._clipboardBox)
+            this._renderDeskClipboard();
+        else if (this._tab === 'home')
+            this._render();
     }
 
     _renderPanel() {
@@ -490,92 +640,195 @@ class HotchIndicator extends PanelMenu.Button {
         return (this._data.usage ?? []).filter(u => u.windows.length || !/not installed/.test(u.error ?? ''));
     }
 
-    _renderNow() {
-        const sessions = this._data.sessions ?? [];
-        const waiting = sessions.find(s => s.activity === 'needs input');
-        if (waiting) {
-            const tile = hbox('hotch-tile hotch-attention');
-            tile.add_child(themedIcon(['hand-open-symbolic', 'dialog-warning-symbolic'], 'hotch-attention-icon'));
-            const text = vbox('hotch-text');
-            text.add_child(label('Needs your attention', 'hotch-attention-kicker'));
-            text.add_child(label(waiting.name, 'hotch-title'));
-            text.add_child(label(waiting.project ? `${waiting.project} · needs you` : 'needs you', 'hotch-sub'));
-            tile.add_child(text);
-            this._page.add_child(this._link(tile, 'sessions'));
+    // MARK: Hotch (home)
+
+    /// Home: usage, the computer's vitals and the desk tools at a glance, each
+    /// block leading to its tab. Only a session waiting on you pushes in
+    /// above them: a blocked agent is the most actionable thing Hotch knows.
+    _renderHome() {
+        const status = this._dataStatus();
+        if (status) {
+            this._page.add_child(status);
+        } else {
+            const sessions = this._data.sessions ?? [];
+            for (const s of sessions.filter(item => item.activity === 'needs input').slice(0, 2))
+                this._page.add_child(this._needsYou(s));
+            const live = sessions.filter(s => ['needs input', 'working', 'shell'].includes(s.activity)).length;
+            this._page.add_child(this._blockHeading('AI usage',
+                live ? `${live} session${live === 1 ? '' : 's'}` : 'Sessions', 'ai'));
+            this._page.add_child(this._homeUsage());
+            this._page.add_child(this._blockHeading('This computer', 'More', 'computer'));
+            this._page.add_child(this._homeComputer());
         }
-
-        const counts = {};
-        for (const s of sessions)
-            counts[s.activity] = (counts[s.activity] ?? 0) + 1;
-        const parts = [['working', 'working'], ['shell', 'in shell'], ['needs input', 'need you'], ['waiting', 'idle']]
-            .filter(([k]) => counts[k]).map(([k, word]) => `${counts[k]} ${word}`);
-        const row = hbox('hotch-row');
-        row.add_child(themedIcon(['utilities-terminal-symbolic'], 'hotch-row-icon'));
-        row.add_child(label(parts.length ? parts.join(' · ') : 'No active sessions', 'hotch-row-label'));
-        row.add_child(spacer());
-        row.add_child(themedIcon(['go-next-symbolic', 'pan-end-symbolic'], 'hotch-chevron'));
-        this._page.add_child(this._link(row, 'sessions'));
-
-        const usages = this._usages();
-        if (usages.length) {
-            this._page.add_child(label('AI CAPACITY', 'hotch-section'));
-            const tile = vbox('hotch-tile hotch-tile-list');
-            usages.forEach((u, i) => {
-                if (i > 0)
-                    tile.add_child(new St.Widget({style_class: 'hotch-divider'}));
-                tile.add_child(this._providerRow(u));
-            });
-            this._page.add_child(this._link(tile, 'ai'));
-        }
-
-        const sys = this._data.system ?? {};
-        const memPercent = sys.memTotalGB ? 100 * sys.memUsedGB / sys.memTotalGB : 0;
-        const hot = (sys.cpuPercent ?? 0) >= 80 || memPercent >= 85;
-        const sysTile = hbox(`hotch-tile ${hot ? 'hotch-hot' : ''}`);
-        sysTile.add_child(themedIcon([hot ? 'dialog-warning-symbolic' : 'computer-symbolic'], 'hotch-tile-icon'));
-        const text = vbox('hotch-text');
-        text.add_child(label(hot ? 'Your computer is running hot' : 'This computer', hot ? 'hotch-hot-title' : 'hotch-title'));
-        text.add_child(label(this._systemLine(), 'hotch-sub'));
-        sysTile.add_child(text);
-        sysTile.add_child(spacer());
-        sysTile.add_child(themedIcon(['go-next-symbolic', 'pan-end-symbolic'], 'hotch-chevron'));
-        this._page.add_child(this._link(sysTile, 'system'));
+        this._page.add_child(this._blockHeading('Desk', 'More', 'desk'));
+        this._page.add_child(this._homeDesk());
     }
 
-    _providerRow(u) {
-        const brand = BRANDS[u.provider] ?? {name: u.provider, accent: [0.78, 0.78, 0.8]};
-        const w = headline(u);
-        const row = hbox('hotch-provider-row');
-        row.add_child(this._markedRing(u.provider, w?.percent ?? null));
-        const text = vbox('hotch-text', {x_expand: true});
-        const titleRow = hbox('');
-        titleRow.add_child(label(brand.name, 'hotch-title'));
-        titleRow.add_child(spacer());
-        if (w)
-            titleRow.add_child(label(`${this._percent(w.percent)}% ${this._ext.settings.displayMode}`, 'hotch-percent'));
-        text.add_child(titleRow);
-        if (w) {
-            const reset = w.resetsAt ? ` · Resets ${relative(w.resetsAt - now())}` : '';
-            text.add_child(label(`${w.label}${reset}`, 'hotch-sub'));
-        } else {
-            text.add_child(label(u.error ?? u.extras?.[0] ?? 'No reading', 'hotch-sub'));
-        }
-        if (u.plan)
-            text.add_child(label(`${u.plan} plan`, 'hotch-muted'));
-        if (u.stale)
-            text.add_child(label(readingStatus(u, now()), 'hotch-sub'));
-        row.add_child(text);
+    /// A home block's small heading, with the way into its tab on the right.
+    _blockHeading(title, link, tab) {
+        const row = hbox('hotch-block-heading');
+        row.add_child(label(title.toUpperCase(), 'hotch-section'));
+        row.add_child(spacer());
+        const inner = hbox('hotch-block-link-box');
+        inner.add_child(label(link, 'hotch-block-link-label'));
+        inner.add_child(themedIcon(['go-next-symbolic', 'pan-end-symbolic'], 'hotch-block-chevron'));
+        const button = new St.Button({style_class: 'hotch-block-link', can_focus: true,
+            accessible_name: `${title}: ${link}`, y_align: Clutter.ActorAlign.END, child: inner});
+        button.connect('clicked', () => this._show(tab));
+        row.add_child(button);
         return row;
     }
 
-    /// The Now page's provider ring: the brand mark sits inside the gauge.
-    _markedRing(provider, percent) {
+    /// The one line home gives a session that is waiting on you.
+    _needsYou(s) {
+        const tile = hbox('hotch-tile hotch-attention');
+        tile.add_child(themedIcon(['hand-open-symbolic', 'dialog-warning-symbolic'], 'hotch-attention-icon'));
+        const text = vbox('hotch-text', {x_expand: true});
+        const top = hbox('hotch-attention-line');
+        top.add_child(label('Needs you', 'hotch-attention-kicker'));
+        top.add_child(label(`· ${s.name}`, 'hotch-attention-name'));
+        text.add_child(top);
+        const ask = s.waitingFor || s.project;
+        if (ask)
+            text.add_child(label(ask, 'hotch-sub'));
+        tile.add_child(text);
+        tile.add_child(themedIcon(['go-next-symbolic', 'pan-end-symbolic'], 'hotch-chevron'));
+        return this._link(tile, 'ai');
+    }
+
+    /// Up to four providers, two to a row.
+    _homeUsage() {
+        const usages = this._usages().slice(0, 4);
+        if (!usages.length) {
+            const row = hbox('hotch-tile');
+            row.add_child(label('No AI accounts connected yet', 'hotch-title'));
+            row.add_child(spacer());
+            row.add_child(label('Settings', 'hotch-muted'));
+            return this._link(row, 'settings');
+        }
+        const grid = vbox('hotch-grid');
+        for (let i = 0; i < usages.length; i += 2) {
+            const row = columns('hotch-grid-row');
+            const pair = usages.slice(i, i + 2);
+            for (const u of pair)
+                row.add_child(this._link(this._usageTile(u), u.windows.length || !u.error ? 'ai' : 'settings'));
+            if (pair.length === 1)
+                row.add_child(spacer());
+            grid.add_child(row);
+        }
+        return grid;
+    }
+
+    /// A provider at home: its tightest window as a ring around its mark.
+    _usageTile(u) {
+        const w = headline(u);
+        const tile = hbox('hotch-tile hotch-usage-tile');
+        tile.add_child(this._markedRing(u.provider, w?.percent ?? null, true));
+        const text = vbox('hotch-text', {x_expand: true, y_align: Clutter.ActorAlign.CENTER});
+        text.add_child(label(BRANDS[u.provider]?.name ?? u.provider, 'hotch-tile-label'));
+        const warn = w ? w.percent >= CRITICAL_PERCENT : Boolean(u.error);
+        text.add_child(label(w ? `${this._percent(w.percent)}% ${this._ext.settings.displayMode}` : 'No reading',
+            `hotch-tile-value${warn ? ' hotch-amber' : ''}`));
+        const note = w ? [w.label, w.resetsAt ? relative(w.resetsAt - now()) : null].filter(Boolean).join(' · ')
+            : u.error ?? '';
+        if (note)
+            text.add_child(label(note, 'hotch-tile-note'));
+        tile.add_child(text);
+        return tile;
+    }
+
+    /// CPU, memory and battery: the readings worth a glance. Linux reads no
+    /// temperatures, so the battery stands where the Mac shows thermals.
+    _homeComputer() {
+        const sys = this._data.system ?? {};
+        if (sys.error) {
+            const tile = hbox('hotch-tile');
+            tile.add_child(label(sys.error, 'hotch-sub'));
+            return this._link(tile, 'computer');
+        }
+        const alerts = systemAlerts(sys);
+        const row = columns('hotch-grid-row');
+        row.add_child(this._statTile('CPU', sys.cpuPercent ?? null, CPU, alerts.cpu));
+        row.add_child(this._statTile('Memory', sys.memTotalGB ? 100 * sys.memUsedGB / sys.memTotalGB : null,
+            MEMORY, alerts.memory));
+        if (sys.battery)
+            row.add_child(this._statTile('Battery', sys.battery.percent, POWER, alerts.battery));
+        return row;
+    }
+
+    _statTile(name, percent, color, alert) {
+        const tile = vbox('hotch-tile hotch-stat-tile');
+        tile.add_child(label(name, 'hotch-tile-label'));
+        tile.add_child(label(percent === null ? '—' : `${Math.round(percent)}%`,
+            `hotch-stat-value${alert ? ' hotch-amber' : ''}`));
+        tile.add_child(new Meter(percent === null ? 0 : percent / 100, alert ? WARNING : color));
+        return this._link(tile, 'computer');
+    }
+
+    /// Focus started in one click, and the last two things copied.
+    _homeDesk() {
+        const tile = vbox('hotch-tile hotch-desk-tile');
+        tile.add_child(this._homeFocus());
+        const items = this._ext.settings.clipboardEnabled ? this._ext.clipboardItems.slice(0, 2) : [];
+        if (items.length) {
+            tile.add_child(new St.Widget({style_class: 'hotch-divider hotch-desk-divider'}));
+            for (const text of items)
+                tile.add_child(this._clipboardRow(text));
+        }
+        return tile;
+    }
+
+    _homeFocus() {
+        const f = this._ext.settings.focus;
+        const run = focusRun(f, now());
+        const row = hbox('hotch-row hotch-focus-row');
+        if (run) {
+            row.add_child(themedIcon([run.paused ? 'media-playback-pause-symbolic' : 'alarm-symbolic'], 'hotch-row-icon'));
+            row.add_child(label(f.title || 'Focus', 'hotch-row-label', {x_expand: true}));
+            this._homeClock = label(run.clock, 'hotch-focus-value');
+            row.add_child(this._homeClock);
+            row.add_child(label(run.caption, 'hotch-muted'));
+            return this._link(row, 'desk');
+        }
+        row.add_child(themedIcon(['alarm-symbolic'], 'hotch-row-icon'));
+        row.add_child(label('Focus', 'hotch-row-label'));
+        row.add_child(spacer());
+        for (const minutes of FOCUS_MINUTES)
+            row.add_child(this._chip(`${minutes}m`, `Start a ${minutes} minute timer`, () => this._quickFocus(minutes)));
+        row.add_child(this._chip('Stopwatch', 'Start a stopwatch', () => this._quickFocus(null)));
+        return row;
+    }
+
+    _quickFocus(minutes) {
+        this._ext.updateSettings({focus: quickFocus(this._ext.settings.focus, minutes, now())});
+    }
+
+    _chip(text, name, callback) {
+        const button = new St.Button({style_class: 'hotch-chip', can_focus: true, label: text, accessible_name: name});
+        button.connect('clicked', callback);
+        return button;
+    }
+
+    /// Copied text as a short row: select it to copy it again.
+    _clipboardRow(text) {
+        const preview = text.replace(/\s+/g, ' ').trim().slice(0, 100);
+        const row = hbox('hotch-row hotch-clip-row');
+        row.add_child(themedIcon(['edit-paste-symbolic'], 'hotch-row-icon'));
+        row.add_child(label(preview, 'hotch-row-label', {x_expand: true}));
+        const button = new St.Button({style_class: 'hotch-link', x_expand: true, x_align: Clutter.ActorAlign.FILL,
+            can_focus: true, accessible_name: `Copy ${preview}`, child: row});
+        button.connect('clicked', () => this._ext.copyClipboard(text));
+        return button;
+    }
+
+    /// A provider's ring with its brand mark inside the gauge.
+    _markedRing(provider, percent, small = false) {
         const brand = BRANDS[provider] ?? {accent: [0.78, 0.78, 0.8]};
         const stack = new St.Widget({layout_manager: new Clutter.BinLayout(), y_align: Clutter.ActorAlign.CENTER});
-        const ring = new Ring('hotch-ring', 3.5);
+        const ring = new Ring(small ? 'hotch-ring-small' : 'hotch-ring', small ? 3 : 3.5);
         ring.setValue(percent, brand.accent, brand.highlight, true, this._remaining());
         stack.add_child(ring);
-        const mark = markIcon(this._ext.dir, provider, 'hotch-ring-mark');
+        const mark = markIcon(this._ext.dir, provider, small ? 'hotch-ring-mark-small' : 'hotch-ring-mark');
         if (mark) {
             mark.x_align = Clutter.ActorAlign.CENTER;
             stack.add_child(mark);
@@ -583,77 +836,99 @@ class HotchIndicator extends PanelMenu.Button {
         return stack;
     }
 
+    // MARK: AI
+
+    /// Every provider with its usage windows, and the sessions running on it
+    /// nested beneath: usage and the work spending it, in one place.
     _renderAI() {
+        const status = this._dataStatus();
+        if (status) {
+            this._page.add_child(status);
+            return;
+        }
         const usages = this._usages();
-        if (!usages.length) {
+        const sessions = this._data.sessions ?? [];
+        // Providers in usage order, then any with sessions but no reading.
+        const ids = usages.map(u => u.provider);
+        for (const s of sessions) {
+            if (!ids.includes(s.provider))
+                ids.push(s.provider);
+        }
+        if (!ids.length) {
             this._page.add_child(label('No AI providers found. Install and sign in to Claude Code or Codex.',
                 'hotch-muted hotch-empty'));
+            this._page.add_child(this._action('Open Settings', () => this._show('settings')));
             return;
         }
-        for (const u of usages) {
-            const brand = BRANDS[u.provider] ?? {name: u.provider, accent: [0.78, 0.78, 0.8]};
-            const tile = vbox('hotch-tile hotch-tile-list');
-            const head = hbox('hotch-provider-head');
-            const mark = markIcon(this._ext.dir, u.provider, 'hotch-head-mark');
-            if (mark)
-                head.add_child(mark);
-            head.add_child(label(brand.name, 'hotch-title'));
-            tile.add_child(head);
-            if (!u.windows.length)
-                tile.add_child(label(u.error ?? 'No reading', 'hotch-sub'));
-            for (const w of u.windows) {
-                const row = hbox('hotch-window-row');
-                const ring = new Ring('hotch-ring', 3.5);
-                ring.setValue(w.percent, brand.accent, brand.highlight, true, this._remaining());
-                row.add_child(ring);
-                const text = vbox('hotch-text', {x_expand: true});
-                const top = hbox('');
-                top.add_child(label(w.label, 'hotch-window-label'));
-                top.add_child(spacer());
-                top.add_child(label(`${this._percent(w.percent)}% ${this._ext.settings.displayMode}`, 'hotch-percent'));
-                text.add_child(top);
-                if (w.resetsAt)
-                    text.add_child(label(`Resets ${relative(w.resetsAt - now())}`, 'hotch-sub'));
-                row.add_child(text);
-                tile.add_child(row);
-            }
-            for (const extra of u.extras ?? [])
-                tile.add_child(label(extra, 'hotch-muted'));
-            if (u.plan)
-                tile.add_child(label(`${u.plan} plan`, 'hotch-muted'));
-            if (u.stale)
-                tile.add_child(label(readingStatus(u, now()), 'hotch-sub'));
-            this._page.add_child(tile);
-        }
+        for (const id of ids)
+            this._page.add_child(this._providerGroup(id, usages.find(u => u.provider === id),
+                sessions.filter(s => s.provider === id)));
     }
 
-    _renderSessions() {
-        const sessions = this._data.sessions ?? [];
-        if (!sessions.length) {
-            this._page.add_child(label('No active sessions', 'hotch-muted hotch-empty'));
-            return;
-        }
+    _providerGroup(id, u, sessions) {
+        const brand = BRANDS[id] ?? {name: id, accent: [0.78, 0.78, 0.8]};
         const tile = vbox('hotch-tile hotch-tile-list');
-        sessions.forEach((s, i) => {
-            if (i > 0)
-                tile.add_child(new St.Widget({style_class: 'hotch-divider'}));
-            const row = hbox('hotch-session-row');
-            const mark = markIcon(this._ext.dir, s.provider, 'hotch-head-mark');
-            if (mark)
-                row.add_child(mark);
+        const head = hbox('hotch-provider-head');
+        const mark = markIcon(this._ext.dir, id, 'hotch-head-mark');
+        if (mark)
+            head.add_child(mark);
+        head.add_child(label(brand.name, 'hotch-title'));
+        if (u?.plan)
+            head.add_child(label(`${u.plan} plan`, 'hotch-muted'));
+        tile.add_child(head);
+        if (u && !u.windows.length)
+            tile.add_child(label(u.error ?? 'No reading', 'hotch-sub'));
+        for (const w of u?.windows ?? []) {
+            const row = hbox('hotch-window-row');
+            const ring = new Ring('hotch-ring', 3.5);
+            ring.setValue(w.percent, brand.accent, brand.highlight, true, this._remaining());
+            row.add_child(ring);
             const text = vbox('hotch-text', {x_expand: true});
-            text.add_child(label(s.name, 'hotch-title'));
-            const where = s.project ? `${s.project} · ` : '';
-            text.add_child(label(`${where}${ago(now() - s.lastEventAt)}`, 'hotch-sub'));
+            const top = hbox('');
+            top.add_child(label(w.label, 'hotch-window-label'));
+            top.add_child(spacer());
+            top.add_child(label(`${this._percent(w.percent)}% ${this._ext.settings.displayMode}`, 'hotch-percent'));
+            text.add_child(top);
+            if (w.resetsAt)
+                text.add_child(label(`Resets ${relative(w.resetsAt - now())}`, 'hotch-sub'));
             row.add_child(text);
-            const state = s.activity.replace(' ', '-');
-            row.add_child(label(statusWord(s), `hotch-state hotch-state-${state}`));
             tile.add_child(row);
-        });
-        this._page.add_child(tile);
+        }
+        for (const extra of u?.extras ?? [])
+            tile.add_child(label(extra, 'hotch-muted'));
+        if (u?.stale)
+            tile.add_child(label(readingStatus(u, now()), 'hotch-sub'));
+        if (sessions.length) {
+            const list = vbox('hotch-session-list');
+            for (const s of sessions)
+                list.add_child(this._sessionRow(s));
+            tile.add_child(list);
+        }
+        return tile;
     }
 
-    _renderSystem() {
+    /// A session under its provider: what it is waiting on, or where it runs
+    /// and when it last moved.
+    _sessionRow(s) {
+        const row = hbox('hotch-session-row');
+        const text = vbox('hotch-text', {x_expand: true});
+        text.add_child(label(s.name, 'hotch-session-name'));
+        const ask = s.activity === 'needs input' ? s.waitingFor : null;
+        const where = s.project ? `${s.project} · ` : '';
+        text.add_child(label(ask ?? `${where}${ago(now() - s.lastEventAt)}`, ask ? 'hotch-sub hotch-amber' : 'hotch-sub'));
+        row.add_child(text);
+        row.add_child(label(statusWord({...s, waitingFor: null}), `hotch-state hotch-state-${s.activity.replace(' ', '-')}`));
+        return row;
+    }
+
+    // MARK: Computer
+
+    _renderComputer() {
+        const status = this._dataStatus();
+        if (status) {
+            this._page.add_child(status);
+            return;
+        }
         const sys = this._data.system ?? {};
         if (sys.error) {
             this._page.add_child(label(sys.error, 'hotch-muted hotch-empty'));
@@ -712,13 +987,12 @@ class HotchIndicator extends PanelMenu.Button {
 
     _renderSettings() {
         const s = this._ext.settings;
-        this._page.add_child(label('Settings', 'hotch-title'));
         this._choice('HOME', HOMES, s.home, home => this._ext.setHome(home));
         this._choice('APPEARANCE', [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']], s.theme,
             theme => this._ext.updateSettings({theme}));
         this._choice('USAGE DISPLAY', [['used', 'Used'], ['remaining', 'Remaining']], s.displayMode,
             displayMode => this._ext.updateSettings({displayMode}));
-        this._choice('REFRESH', [[30, '30 seconds'], [60, '1 minute'], [120, '2 minutes'], [300, '5 minutes']], s.refreshSeconds,
+        this._choice('REFRESH', REFRESH, s.refreshSeconds,
             refreshSeconds => this._ext.updateSettings({refreshSeconds}));
         this._page.add_child(label('PROVIDERS', 'hotch-section'));
         for (const id of ['claude', 'codex']) {
@@ -776,21 +1050,26 @@ class HotchIndicator extends PanelMenu.Button {
         this._page.add_child(this._paragraph('Once a day Hotch asks GitHub which Linux release is newest, sending its version and nothing about you. It never downloads or installs an update.'));
     }
 
-    _renderFocus() {
+    // MARK: Desk
+
+    /// Desk: the tools you switch on. Focus, then clipboard history.
+    _renderDesk() {
         const f = this._ext.settings.focus;
         const reading = focusReading(f, now());
-        this._page.add_child(label('Focus', 'hotch-title'));
+        this._page.add_child(label('FOCUS', 'hotch-section'));
         this._focusClock = label(clockText(reading.seconds), 'hotch-focus-clock');
         this._page.add_child(this._focusClock);
         this._page.add_child(label(reading.done ? 'Timer complete' : f.startedAt !== null ? 'Running' : f.elapsed ? 'Paused' : 'Ready', 'hotch-sub'));
-        const title = new St.Entry({style_class: 'hotch-entry', hint_text: 'What are you working on?', can_focus: true, text: f.title});
+        const title = new St.Entry({style_class: 'hotch-entry', hint_text: 'What are you working on?', can_focus: true,
+            text: this._focusDraft ?? f.title});
+        this._focusTitle = title;
         this._page.add_child(title);
         let minutes;
         if (f.elapsed === 0 && f.startedAt === null) {
             this._choice('MODE', [['timer', 'Timer'], ['stopwatch', 'Stopwatch']], f.mode,
                 mode => this._ext.updateSettings({focus: {...f, mode, title: title.get_text()}}));
             if (f.mode === 'timer') {
-                this._choice('DURATION', [[900, '15 min'], [1500, '25 min'], [3000, '50 min']], f.duration,
+                this._choice('DURATION', FOCUS_MINUTES.map(m => [m * 60, `${m} min`]), f.duration,
                     duration => this._ext.updateSettings({focus: {...f, duration, title: title.get_text()}}));
                 minutes = new St.Entry({style_class: 'hotch-entry', hint_text: 'Custom minutes (1–1440)',
                     can_focus: true, text: String(f.duration / 60)});
@@ -817,37 +1096,33 @@ class HotchIndicator extends PanelMenu.Button {
         this._page.add_child(controls);
         this._page.add_child(error);
         this._page.add_child(this._paragraph('The clock stays on your companion while running. Timer state survives a GNOME restart; completion sends one desktop notification.'));
+
+        this._page.add_child(label('CLIPBOARD', 'hotch-section'));
+        this._clipboardBox = vbox('hotch-page');
+        this._page.add_child(this._clipboardBox);
+        this._renderDeskClipboard();
     }
 
-    _renderClipboard() {
-        this._page.add_child(label('Clipboard', 'hotch-title'));
+    _renderDeskClipboard() {
+        const box = this._clipboardBox;
+        box.destroy_all_children();
         if (!this._ext.settings.clipboardEnabled) {
-            this._page.add_child(this._paragraph('Clipboard history is off. Enable it to remember future text copies in memory. Applications must supply privacy markers for Hotch to recognise sensitive copies.'));
-            this._page.add_child(this._action('Enable clipboard history', () => this._ext.updateSettings({clipboardEnabled: true})));
+            box.add_child(this._paragraph('Clipboard history is off. Enable it to remember future text copies in memory. Applications must supply privacy markers for Hotch to recognise sensitive copies.'));
+            box.add_child(this._action('Enable clipboard history', () => this._ext.updateSettings({clipboardEnabled: true})));
             return;
         }
-        for (const text of this._ext.clipboardItems) {
-            const preview = text.replace(/\s+/g, ' ').slice(0, 100);
-            this._page.add_child(this._action(preview, () => this._ext.copyClipboard(text)));
+        if (this._ext.clipboardItems.length) {
+            const list = vbox('hotch-tile hotch-clip-list');
+            for (const text of this._ext.clipboardItems)
+                list.add_child(this._clipboardRow(text));
+            box.add_child(list);
+        } else {
+            box.add_child(this._paragraph('Future text copies will appear here. Select an entry to copy it again.'));
         }
-        if (!this._ext.clipboardItems.length)
-            this._page.add_child(this._paragraph('Future text copies will appear here. Select an entry to copy it again.'));
-        this._page.add_child(this._action('Clear history', () => this._ext.clearClipboard()));
-        this._page.add_child(this._action('Disable and clear', () => this._ext.updateSettings({clipboardEnabled: false})));
-    }
-
-    _systemLine() {
-        const sys = this._data.system ?? {};
-        if (sys.error)
-            return sys.error;
-        const parts = [];
-        if (sys.cpuPercent !== null && sys.cpuPercent !== undefined)
-            parts.push(`CPU ${Math.round(sys.cpuPercent)}%`);
-        if (sys.memTotalGB)
-            parts.push(`Memory ${Math.round(100 * sys.memUsedGB / sys.memTotalGB)}%`);
-        if (sys.battery)
-            parts.push(`Battery ${sys.battery.percent}%`);
-        return parts.join(' · ');
+        const actions = hbox('hotch-choices');
+        actions.add_child(this._action('Clear history', () => this._ext.clearClipboard()));
+        actions.add_child(this._action('Disable and clear', () => this._ext.updateSettings({clipboardEnabled: false})));
+        box.add_child(actions);
     }
 
     /// Wraps a tile so a click opens the matching tab, like the Mac overview.
@@ -1115,7 +1390,7 @@ export default class HotchExtension extends Extension {
                 }
                 this._indicator._renderPanel();
                 this.pill?.render(this._indicator._data);
-                if (this._indicator._focusClock) this._indicator._focusClock.text = clockText(reading.seconds);
+                this._indicator.tick();
                 return GLib.SOURCE_CONTINUE;
             });
         }
@@ -1140,7 +1415,7 @@ export default class HotchExtension extends Extension {
                     if (!this._enabled || !this.settings.clipboardEnabled || generation !== this._clipboardGeneration) return;
                     if (privateClipboard(clipboard.get_mimetypes(St.ClipboardType.CLIPBOARD))) return;
                     this.clipboardItems = rememberClipboard(this.clipboardItems, text);
-                    if (this._indicator._tab === 'clipboard') this._indicator._render();
+                    this._indicator.clipboardChanged();
                 });
             });
         }
@@ -1156,7 +1431,7 @@ export default class HotchExtension extends Extension {
     clearClipboard() {
         this._clipboardGeneration++;
         this.clipboardItems = [];
-        this._indicator._render();
+        this._indicator.clipboardChanged();
     }
 
     /// Development only: with HOTCH_PREVIEW=/path/prefix (set when running a

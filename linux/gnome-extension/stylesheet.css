@@ -17,21 +17,25 @@
 }
 .hotch-card { width: 372px; spacing: 10px; color: rgba(255, 255, 255, 0.94); }
 
-/* Segmented tabs */
+/* Header: the page's name and a line about it, the four tabs as icons beside. */
+.hotch-header { spacing: 10px; padding-left: 4px; }
+.hotch-heading { spacing: 1px; }
+.hotch-heading-title { font-size: 16px; font-weight: 700; color: rgba(255, 255, 255, 0.94); }
+.hotch-heading-caption { font-size: 11.5px; color: rgba(255, 255, 255, 0.52); max-width: 200px; }
+.hotch-heading-alert { color: #ffb84d; }
 .hotch-tabs {
   background-color: rgba(255, 255, 255, 0.055);
   border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 13px;
-  padding: 3px;
+  border-radius: 10px;
+  padding: 2px;
   spacing: 2px;
 }
-.hotch-tab { border-radius: 10px; padding: 6px 0 5px; color: rgba(255, 255, 255, 0.66); }
+.hotch-tab { width: 34px; height: 28px; border-radius: 8px; color: rgba(255, 255, 255, 0.66); }
 .hotch-tab:hover { background-color: rgba(255, 255, 255, 0.06); }
 .hotch-tab:checked { background-color: rgba(255, 255, 255, 0.16); color: #ffffff; }
 .hotch-tab:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25); }
-.hotch-tab-inner { spacing: 3px; }
-.hotch-tab-icon { icon-size: 16px; }
-.hotch-tab-label { font-size: 10px; font-weight: 600; }
+.hotch-tab-icon { icon-size: 15px; }
+.hotch-tab-glyph { width: 15px; height: 15px; }
 
 /* Pages */
 .hotch-page { spacing: 8px; }
@@ -63,26 +67,76 @@
 /* Rings */
 .hotch-ring { width: 38px; height: 38px; }
 .hotch-ring-mark { icon-size: 16px; }
+.hotch-ring-small { width: 32px; height: 32px; }
+.hotch-ring-mark-small { icon-size: 12px; }
 .hotch-head-mark { icon-size: 16px; }
-.hotch-provider-row { spacing: 12px; }
 .hotch-provider-head { spacing: 7px; padding-bottom: 2px; }
 .hotch-window-row { spacing: 12px; }
 .hotch-window-label { font-size: 13px; font-weight: 600; }
 
 /* Rows */
 .hotch-row { spacing: 10px; padding: 8px 6px; border-radius: 10px; }
-.hotch-row-icon, .hotch-tile-icon { icon-size: 18px; color: rgba(255, 255, 255, 0.66); }
+.hotch-row-icon { icon-size: 18px; color: rgba(255, 255, 255, 0.66); }
 .hotch-row-label { font-size: 13.5px; color: rgba(255, 255, 255, 0.84); }
 .hotch-chevron { icon-size: 14px; color: rgba(255, 255, 255, 0.52); }
 
 /* Attention, amber: a nudge, not the warning red. */
-.hotch-attention-icon { icon-size: 22px; color: #ffb84d; }
+.hotch-attention {
+  background-color: rgba(255, 184, 77, 0.13);
+  border-color: rgba(255, 184, 77, 0.20);
+  padding: 9px 10px;
+  spacing: 9px;
+  border-radius: 12px;
+}
+.hotch-link:hover .hotch-tile.hotch-attention { background-color: rgba(255, 184, 77, 0.20); }
+.hotch-attention-icon { icon-size: 18px; color: #ffb84d; }
+.hotch-attention-line { spacing: 5px; }
 .hotch-attention-kicker { font-size: 12.5px; font-weight: 700; color: #ffb84d; }
-.hotch-hot .hotch-tile-icon { color: #ffb84d; }
-.hotch-hot-title { font-size: 14px; font-weight: 700; color: #ffb84d; }
+.hotch-attention-name { font-size: 12.5px; color: rgba(255, 255, 255, 0.94); max-width: 220px; }
+.hotch-amber { color: #ffb84d; }
 
-/* Sessions */
+/* Home: blocks that each lead to their tab */
+.hotch-block-heading { spacing: 4px; }
+.hotch-block-link { border-radius: 7px; padding: 2px 4px; }
+.hotch-block-link:hover { background-color: rgba(255, 255, 255, 0.06); }
+.hotch-block-link:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25); }
+.hotch-block-link-box { spacing: 3px; }
+.hotch-block-link-label { font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, 0.52); }
+.hotch-block-chevron { icon-size: 10px; color: rgba(255, 255, 255, 0.52); }
+.hotch-grid { spacing: 6px; }
+.hotch-grid-row { spacing: 6px; }
+.hotch-usage-tile { padding: 9px 10px; spacing: 9px; border-radius: 12px; }
+.hotch-stat-tile { padding: 8px 10px; spacing: 3px; border-radius: 12px; }
+.hotch-tile-label { font-size: 11.5px; color: rgba(255, 255, 255, 0.66); }
+.hotch-tile-value { font-size: 13.5px; font-weight: 700; font-feature-settings: "tnum"; }
+.hotch-tile-note { font-size: 11px; color: rgba(255, 255, 255, 0.52); max-width: 110px; }
+.hotch-stat-value { font-size: 15px; font-weight: 700; font-feature-settings: "tnum"; }
+.hotch-meter { height: 5px; margin-top: 3px; }
+.hotch-desk-tile { padding: 4px; spacing: 0; border-radius: 12px; }
+.hotch-desk-divider { margin: 2px 6px; }
+.hotch-focus-row { spacing: 6px; padding: 6px; }
+.hotch-focus-value { font-size: 13.5px; font-weight: 700; font-feature-settings: "tnum"; }
+.hotch-chip {
+  font-size: 11.5px; font-weight: 600;
+  padding: 4px 9px; border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  color: #f5f5f7;
+}
+.hotch-chip:hover { background-color: rgba(150, 154, 255, 0.25); }
+.hotch-chip:focus { box-shadow: inset 0 0 0 2px #969aff; }
+.hotch-clip-row { padding: 6px; }
+.hotch-clip-list { padding: 4px; spacing: 0; border-radius: 12px; }
+
+/* Sessions, nested under their provider on the AI tab */
+.hotch-session-list {
+  border-left: 2px solid rgba(255, 255, 255, 0.10);
+  margin-left: 6px;
+  padding-left: 10px;
+  spacing: 8px;
+}
 .hotch-session-row { spacing: 11px; }
+.hotch-session-name { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.94); max-width: 220px; }
 .hotch-state {
   font-size: 11px; font-weight: 700;
   border-radius: 8px; padding: 3px 8px;
@@ -169,3 +223,14 @@
 .hotch-light .hotch-pill-sep { background-color: rgba(0, 0, 0, 0.12); }
 .hotch-light .hotch-pill-critical { color: #bc201b; }
 .hotch-light .hotch-update-label { color: #202024; }
+.hotch-light .hotch-heading-title, .hotch-light .hotch-tile-value, .hotch-light .hotch-stat-value,
+.hotch-light .hotch-focus-value, .hotch-light .hotch-session-name, .hotch-light .hotch-attention-name { color: #202024; }
+.hotch-light .hotch-heading-caption, .hotch-light .hotch-tile-label, .hotch-light .hotch-tile-note,
+.hotch-light .hotch-block-link-label, .hotch-light .hotch-block-chevron { color: #595962; }
+.hotch-light .hotch-chip { background-color: rgba(0, 0, 0, 0.055); border-color: rgba(0, 0, 0, 0.10); color: #202024; }
+.hotch-light .hotch-chip:hover { background-color: rgba(100, 104, 215, 0.18); }
+.hotch-light .hotch-tile.hotch-attention { background-color: rgba(214, 130, 0, 0.13); border-color: rgba(214, 130, 0, 0.22); }
+.hotch-light .hotch-session-list { border-color: rgba(0, 0, 0, 0.12); }
+/* Amber deepened for contrast on the light card. */
+.hotch-light .hotch-heading-alert, .hotch-light .hotch-amber,
+.hotch-light .hotch-attention-kicker, .hotch-light .hotch-attention-icon { color: #9a5b00; }
