@@ -193,24 +193,23 @@ struct CompactCard: View {
 
     private var footer: some View {
         HStack(spacing: 2) {
-            // A found update takes the status line until it is dealt with,
-            // except on the Backpack card, whose line says whether the Mac
-            // will sleep.
-            if let offer = renderedOffer ?? updates.offer, !pages.backpackCard {
-                UpdatePill(offer: offer) { updates.checkForUpdates() }
-            } else {
-                Text(footerText)
-                    .font(.system(size: CT.caption))
-                    .foregroundStyle(HP.text3)
-                    .lineLimit(1)
-                    .contentTransition(.identity)
-            }
+            Text(footerText)
+                .font(.system(size: CT.caption))
+                .foregroundStyle(HP.text3)
+                .lineLimit(1)
+                .contentTransition(.identity)
             Spacer(minLength: 6)
             // Backpack lives on the Desk tab. The footer only carries it while
             // it is on (a mode that keeps the Mac awake should never be out of
             // sight) or while its card is open, as the way back.
             if backpack.isOn || pages.backpackCard {
                 BackpackShortcut(backpack: backpack, selected: pages.backpackCard, action: nav.openBackpack)
+            }
+            // A found update sits with the app's own buttons until it is
+            // dealt with.
+            if let offer = renderedOffer ?? updates.offer {
+                UpdateButton(offer: offer) { updates.checkForUpdates() }
+                    .padding(.horizontal, 2)
             }
             if showsAppButtons {
                 button("arrow.clockwise", help: "Refresh now", action: onRefresh)

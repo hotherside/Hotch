@@ -81,7 +81,14 @@ enum PanelPage: Int, CaseIterable, Sendable {
 /// touches it, the render is still worth having — so the affected views ask
 /// for this and draw the stand-in instead.
 private struct SnapshotRenderingKey: EnvironmentKey {
-    static let defaultValue = false
+    static var defaultValue: Bool { SnapshotRendering.everywhere }
+}
+
+enum SnapshotRendering {
+    /// On for every view while `--render-tour` films unseen windows: a
+    /// window drawn into an image cannot show a live material either, so
+    /// the glass takes its solid stand-in there too.
+    nonisolated(unsafe) static var everywhere = false
 }
 
 extension EnvironmentValues {

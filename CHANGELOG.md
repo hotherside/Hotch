@@ -4,6 +4,8 @@ Notable user-facing changes are recorded here.
 
 ## Unreleased
 
+- macOS: an available update is a violet Update button beside Settings in the card's footer, where it is seen at a glance, and the footer keeps its status line.
+
 ## 2.5.0
 
 - macOS: four tabs instead of six, shown as symbols beside the page's name. **Hotch** is home: usage, CPU, memory and thermals, a one-click Focus start and the last two clipboard items. **AI** puts each provider's plan windows above the sessions running on it. **Mac** is unchanged. **Desk** holds Focus, the clipboard and Backpack mode.

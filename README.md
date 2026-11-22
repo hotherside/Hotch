@@ -2,13 +2,26 @@
 
 Hotch is a native macOS companion for a glance at AI plan usage, active Claude Code and Codex work, and Mac activity. Keep it on a screen edge, by the Dock, around the notch, floating on your desktop, or in the menu bar. It is built with Swift and SwiftUI, targets macOS 14 or later, and its one third-party package is [Sparkle](https://sparkle-project.org), which keeps the Mac app up to date.
 
-[![Hotch on the screen edge: the tab opens AI usage and live agent sessions, a sweep turns the desktop from dark to light, then Mac health, an alert, and the original notch view](docs/marketing/video/hotch-reel.gif)](docs/marketing/video/hotch-reel.mp4)
+[![Hotch on the screen edge: the tab tints under the pointer and opens the card, which steps through its four tabs, Hotch, AI, Mac and Desk, then closes as an alert appears beside the tab](docs/marketing/video/hotch-tour.gif)](docs/marketing/video/hotch-tour.mp4)
 
-Recorded from the real app with demo data. [Watch the full 26-second reel](docs/marketing/video/hotch-reel.mp4), with the pill, orb and Dock homes.
+The real app on demo data, filmed from its own windows. [Watch the full tour](docs/marketing/video/hotch-tour.mp4), in dark and then light.
 
 **Try it:** [Download for macOS](https://github.com/hotherside/Hotch/releases/latest) · [Build from source](#build-from-source) · [Report a bug](https://github.com/hotherside/Hotch/issues/new/choose) · [Contribute](CONTRIBUTING.md)
 
 > **Project status:** Hotch is an independent project and is not affiliated with Apple, Anthropic, OpenAI, xAI, Moonshot AI, or DeepSeek. Provider data and availability depend on vendor accounts and interfaces, which can change.
+
+## New in 2.5
+
+- **Four tabs.** The card is **Hotch** (usage, CPU, memory and thermals, a one-click Focus start and your last two clipboard items), **AI** (each provider's plan windows with the sessions running on it), **Mac** (every reading, a click from its detail) and **Desk** (Focus, the clipboard and Backpack mode).
+- **Sessions show their step.** A Claude Code session shows what it is doing and for how long, and one waiting on you shows the command it wants approved.
+- **One tab, one control.** Hovering tints the whole edge tab and opens the card, a click keeps it open, and a second click closes it. The tab shows a usage ring for each provider, and Settings chooses its readouts.
+- **Smooth switching.** Pages swap in one frame while the card's height eases to fit, with nothing blanking, fading across or jumping.
+- **Updates you can see.** A waiting update is a button in the card's footer, on every tab.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/marketing/screenshots/four-tabs-dark.jpg">
+  <img src="docs/marketing/screenshots/four-tabs-light.jpg" alt="The card's four tabs side by side: Hotch with usage, This Mac and Desk; AI with Claude and Codex plan windows above their sessions; Mac with every reading and the temperatures; Desk with a running Focus timer and the clipboard">
+</picture>
 
 ## Features
 
@@ -18,27 +31,30 @@ Recorded from the real app with demo data. [Watch the full 26-second reel](docs/
 - A Focus timer or stopwatch with explicit controls and a persistent clock on your selected companion.
 - Discoverable Backpack mode for keeping agents awake with the lid closed, with one-time helper approval and automatic limits.
 - Optional in-memory clipboard history and brief alerts.
-- A compact three-readout tab on the left, right or bottom, with four tabs inside the card (Hotch, AI, Mac and Desk); the original Notch view; floating pill and orb; or menu bar only.
+- Six homes: a tab on the left, right or bottom edge with the readouts you choose (Claude, Codex, Sessions, Memory and CPU, and a running Focus clock); the original Notch view; a floating pill or orb; or the menu bar only.
 
-![Six homes for Hotch: the screen edge, the notch, the menu bar, a floating pill, an orb, and beside the Dock](docs/marketing/stills/hotch-homes.jpg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/marketing/screenshots/homes-dark.jpg">
+  <img src="docs/marketing/screenshots/homes-light.jpg" alt="Where Hotch can live: the edge tab flush on the right of the screen, the bar beside the Dock along the bottom, and the floating pill and orb on the desktop">
+</picture>
 
 <img src="docs/marketing/brand/app-icon.png" width="96" alt="Hotch app icon: a companion curve and warm signal">
 
 <details>
-<summary>Tour all six sections</summary>
+<summary>Tour the four tabs</summary>
 
-![Native view tour with demo data: Now, AI, Sessions, Mac, Focus, Clipboard and an alert](docs/marketing/screenshots/native-tour.gif)
+![Native view tour with demo data: the Hotch, AI, Mac and Desk tabs, the Update button in the footer, and an alert beside the edge tab](docs/marketing/screenshots/native-tour.gif)
 
-Native view snapshots with demo data, one per section, ending on an alert.
+Native view snapshots with demo data, one per tab, then the Update button and an alert.
 
 </details>
 
 <details>
 <summary>Focus and the original Notch view</summary>
 
-<img src="docs/marketing/screenshots/focus-setup.png" width="412" alt="Focus setup with Timer and Stopwatch modes and explicit duration choices">
+<img src="docs/marketing/screenshots/focus-setup.png" width="412" alt="The Desk tab before a run: Timer and Stopwatch, a task name, explicit duration choices and Start timer, above the clipboard and Backpack mode">
 
-![Focus running in Notch view, with a persistent clock above the tabs](docs/marketing/screenshots/notch-focus.png)
+![Focus running in the Notch view, with the clock above the four tabs and the clipboard below](docs/marketing/screenshots/notch-focus.png)
 
 </details>
 
@@ -48,7 +64,7 @@ Download `Hotch-2.5.0.dmg` from the [latest release](https://github.com/hothersi
 
 Hotch is signed with a Developer ID and notarised by Apple, so it opens like any other app. A short welcome helps you choose where it lives, then points to it.
 
-From 2.4.0, Hotch updates itself. Once a day it checks for a new version and shows what changed, with Install, Remind Me Later and Skip This Version. To have updates download and install on their own instead, or to stop checking, use **Settings → App updates**; automatic installs wait until the card is closed and no Focus timer or Backpack session is running. Hotch 2.3.0 and earlier cannot update themselves: download the latest version once more and later ones arrive in the app.
+From 2.4.0, Hotch updates itself. Once a day it checks for a new version and shows what changed, with Install, Remind Me Later and Skip This Version. While an update is waiting, the card's footer carries an Update button. To have updates download and install on their own instead, or to stop checking, use **Settings → App updates**; automatic installs wait until the card is closed and no Focus timer or Backpack session is running. Hotch 2.3.0 and earlier cannot update themselves: download the latest version once more and later ones arrive in the app.
 
 To check your download, compare `shasum -a 256 ~/Downloads/Hotch-2.5.0.dmg` with the SHA-256 shown next to the file on the release page.
 
